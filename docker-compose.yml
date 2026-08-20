@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: testryn
+      POSTGRES_USER: testryn
+      POSTGRES_PASSWORD: testryn
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testryn -d testryn"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      TESTRYN_DB_URL: jdbc:postgresql://db:5432/testryn
+      TESTRYN_DB_USERNAME: testryn
+      TESTRYN_DB_PASSWORD: testryn
+      TESTRYN_STORAGE_BASE_PATH: /data/reports
+      TESTRYN_JIRA_BASE_URL: ${TESTRYN_JIRA_BASE_URL:-}
+      TESTRYN_JIRA_EMAIL: ${TESTRYN_JIRA_EMAIL:-}
+      TESTRYN_JIRA_API_TOKEN: ${TESTRYN_JIRA_API_TOKEN:-}
+    volumes:
+      - report-storage:/data/reports
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+volumes:
+  pgdata:
+  report-storage:
