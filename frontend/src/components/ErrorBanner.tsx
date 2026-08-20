@@ -1,9 +1,14 @@
 export function ErrorBanner({ message }: { message: string | null }) {
   if (!message) return null;
-  return <div className="error-banner">{message}</div>;
+  return (
+    <div className="error-banner" role="alert">
+      <span aria-hidden="true">⚠</span>
+      <span>{message}</span>
+    </div>
+  );
 }
 
 export function errorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return "Ein unerwarteter Fehler ist aufgetreten.";
+  if (err instanceof Error && err.message) return err.message;
+  return "Something went wrong. Please try again.";
 }
