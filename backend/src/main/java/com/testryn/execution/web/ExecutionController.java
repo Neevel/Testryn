@@ -97,6 +97,30 @@ public class ExecutionController {
         return ExecutionResultResponse.from(result);
     }
 
+    @Operation(
+            summary = "Bulk-update multiple execution results in one atomic request (for CI pipelines)",
+            description = """
+                    Same JSON Merge Patch semantics as the single-result PATCH, applied to every entry in
+                    `results`. Each entry identifies its target via `resultId` and/or `automationReference`
+                    (at least one required; if both are given, they must resolve to the same result). An
+                    `automationReference` is resolved only against test cases that are actually part of THIS
+                    execution -- never globally, and never by creating a test case. Atomic: if any entry fails
+                    validation (unknown reference, result not in this execution, duplicate reference within the
+                    request, invalid status, negative duration, ...), the entire request is rejected and no
+                    result is changed. The error response lists every problem found, not just the first, so a
+                    CI caller can fix everything in one round trip -- see ADR 0010.
+                    """
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            required = true,
+            content = @Content(schema = @Schema(implementation = BulkResultUpdateRequest.class))
+    )
+    @PatchMapping(value = "/api/v1/executions/{executionId}/results", consumes = "application/json")
+    public BulkResultUpdateResponse bulkUpdateResults(@PathVariable UUID executionId, @RequestBody JsonNode body) {
+        var updated = executionService.bulkPatchResults(executionId, body);
+        return BulkResultUpdateResponse.from(updated);
+    }
+
     private ExecutionStatus parseStatus(String value) {
         if (value == null) {
             throw new BadRequestException("status is required");

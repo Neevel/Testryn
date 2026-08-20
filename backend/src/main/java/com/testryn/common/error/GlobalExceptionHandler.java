@@ -43,6 +43,11 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_GATEWAY, ex.getMessage(), request, null);
     }
 
+    @ExceptionHandler(BulkValidationException.class)
+    public ResponseEntity<ApiError> handleBulkValidation(BulkValidationException ex, HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request, ex.getViolations());
+    }
+
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ApiError> handleIllegalState(IllegalStateException ex, HttpServletRequest request) {
         return build(HttpStatus.CONFLICT, ex.getMessage(), request, null);

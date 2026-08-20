@@ -6,6 +6,7 @@ import com.testryn.execution.domain.ExecutionResultStatus;
 import com.testryn.execution.domain.ExecutionStatus;
 import com.testryn.execution.domain.ExecutionTestCase;
 import com.testryn.testcase.domain.TestCaseVersion;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
 import java.time.Instant;
@@ -43,6 +44,72 @@ public final class ExecutionDtos {
             String actualResult,
             String failureDetails
     ) {
+    }
+
+    /**
+     * Documents one bulk-update entry for springdoc (Abschnitt 27); the controller
+     * binds the raw JSON array element to distinguish "field absent" from "field
+     * explicitly null" for the patchable fields, same as {@link ExecutionResultPatchRequest}
+     * -- see ADR 0010. {@code resultId} and/or {@code automationReference} identify
+     * the target within this execution: at least one is required; if both are given
+     * they must resolve to the same result, or the whole request is rejected.
+     */
+    public record BulkResultPatchItemRequest(
+            UUID resultId,
+            String automationReference,
+            ExecutionResultStatus status,
+            String comment,
+            Long durationMs,
+            String executor,
+            String actualResult,
+            String failureDetails
+    ) {
+    }
+
+    public record BulkResultUpdateRequest(
+            @NotEmpty List<BulkResultPatchItemRequest> results
+    ) {
+    }
+
+    /** Superset of {@link ExecutionResultResponse} purpose-built for the bulk
+     * endpoint's response: includes {@code testCaseHumanId}/{@code automationReference}
+     * so a CI publisher can log/report per-test-case outcomes without a second
+     * round-trip to resolve which test case a {@code resultId} belongs to. */
+    public record BulkResultEntryResponse(
+            UUID resultId,
+            String testCaseHumanId,
+            String automationReference,
+            ExecutionResultStatus status,
+            String comment,
+            Long durationMs,
+            Instant executedAt,
+            String executor,
+            String actualResult,
+            String failureDetails
+    ) {
+        public static BulkResultEntryResponse from(ExecutionTestCase etc) {
+            ExecutionResult result = etc.getResult();
+            return new BulkResultEntryResponse(
+                    result.getId(),
+                    etc.getTestCase().getHumanId(),
+                    etc.getTestCase().getAutomationReference(),
+                    result.getStatus(),
+                    result.getComment(),
+                    result.getDurationMs(),
+                    result.getExecutedAt(),
+                    result.getExecutor(),
+                    result.getActualResult(),
+                    result.getFailureDetails()
+            );
+        }
+    }
+
+    public record BulkResultUpdateResponse(
+            List<BulkResultEntryResponse> results
+    ) {
+        public static BulkResultUpdateResponse from(List<ExecutionTestCase> updated) {
+            return new BulkResultUpdateResponse(updated.stream().map(BulkResultEntryResponse::from).toList());
+        }
     }
 
     public record ExecutionResultResponse(
