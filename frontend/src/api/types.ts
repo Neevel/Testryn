@@ -47,12 +47,44 @@ export type RequirementProviderType = "JIRA";
 export interface RequirementLink {
   id: string;
   testCaseId: string;
+  testCaseHumanId: string;
+  testCaseTitle: string | null;
   provider: RequirementProviderType;
   externalId: string | null;
   externalKey: string;
   url: string;
   summary: string | null;
+  issueType: string | null;
+  status: string | null;
+  description: string | null;
   createdAt: string;
+}
+
+export interface JiraIssuePreview {
+  externalId: string | null;
+  externalKey: string;
+  url: string;
+  summary: string | null;
+  issueType: string | null;
+  status: string | null;
+  description: string | null;
+}
+
+export type JiraAuthType = "API_TOKEN" | "OAUTH2";
+
+export interface JiraConnection {
+  name: string;
+  baseUrl: string | null;
+  authType: JiraAuthType;
+  email: string | null;
+  active: boolean;
+  tokenConfigured: boolean;
+  usable: boolean;
+}
+
+export interface JiraConnectionTestResult {
+  success: boolean;
+  message: string;
 }
 
 export interface TestPlanEntry {
@@ -128,4 +160,13 @@ export interface ApiError {
   message: string;
   path: string;
   fieldErrors: { field: string; message: string }[] | null;
+}
+
+/** Mirrors com.testryn.common.web.PageResponse -- see ADR 0008. */
+export interface PageResponse<T> {
+  content: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
 }
