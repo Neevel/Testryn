@@ -3,53 +3,84 @@
 > Momentaufnahme des aktuellen technischen Stands. Keine Historie — siehe Git-Log für
 > Verlauf. Wird bei jedem abgeschlossenen, relevanten Task aktualisiert.
 
-Stand: 2026-08-20
+Stand: 2026-08-21
 
 ## Aktueller Meilenstein
 
-Der Produktauftrag „Testryn – Next Product Block" (CI-/Automations-Workflow) ist
-gemäß der vorgegebenen Priorität (Abschnitt 38) umgesetzt: Bulk-Result-Update,
-`automationReference`, Execution-Mapping, CI-Publisher, Dokumentation und
-Browser-Verifikation sind fertig, end-to-end (inkl. echtem CLI-Lauf gegen die
-laufende Docker-Stack) verifiziert und committet. Der vollständige Workflow „Jira
-Requirement → Test Case → Automation Mapping → Execution → CI → Bulk Results →
-Testryn" funktioniert jetzt technisch, ohne Browser-Automation und ohne
-Framework-Kopplung im Core-Domain-Modell.
+**Jira Cloud integration live-verified** (2026-08-21). Die bereits implementierte
+Jira-Integration (Verbindungskonfiguration, Issue-Lookup, ADF-Parsing,
+Fehlerbehandlung, Requirement-Link-Workflow) wurde gegen eine echte, private
+Jira-Cloud-Instanz end-to-end verifiziert — nicht nur gegen Unit-/Integrationstests
+ohne Jira-Abhängigkeit. Reiner Verification-Block, keine neuen Features, keine
+Refactorings (kein Live-Bug gefunden, der einen Codefix erzwungen hätte — der
+initiale Connection-Test-Fehlschlag war ein ungültiges Token, kein Testryn-Bug,
+siehe unten).
 
-**Live-Jira-Verifikation (Abschnitt 3) ist NICHT durchgeführt** — kein Blocker für
-den Rest des Blocks, aber ein offener Punkt: siehe „Jira Live-Verifikation" unten.
+Der vorherige Block („Next Product Block": Bulk-Result-Update, `automationReference`,
+CI-Publisher) ist unverändert gültig — siehe Git-Log für Details.
 
-Der vorherige Block („Product Expansion Block": Result-PATCH-Fix, Jira-Integration,
-Requirement-Workflow, API-Härtung, Frontend-Redesign, Dashboard) ist unverändert
-gültig — siehe Git-Log für Details, hier nur noch das, was sich in diesem Block
-geändert hat.
+## Jira Live-Verifikation — abgeschlossen
 
-## Jira Live-Verifikation (Abschnitt 3) — dokumentierter Blocker
+Verifiziert gegen die reale, privat konfigurierte Jira-Cloud-Instanz dieses Projekts,
+Zugangsdaten aus dem lokalen PowerShell-SecretStore des Nutzers (nie in Code, Git,
+Logs oder dieser Datei). Verwendetes Test-Issue: **EVAL-47** (reguläre Jira Story,
+kein Xray-Test-Issue).
 
-Diese Entwicklungsumgebung hat keinen Zugriff auf einen Secret Store und keine
-`TESTRYN_JIRA_*`-Umgebungsvariablen gesetzt (`.env` existiert nicht, `env | grep
-JIRA` liefert nichts). Die Jira-Integration selbst (Verbindungskonfiguration,
-Issue-Lookup, ADF-Parsing, Fehlerbehandlung) ist vollständig implementiert und
-unit-/integrationsgetestet **ohne echte Jira-Abhängigkeit** (siehe voriger Block).
-Was in diesem Block fehlt, ist ausschließlich die Verifikation gegen eine *echte*
-Jira-Cloud-Instanz.
+Verifizierte Workflows:
 
-**Um sie nachzuholen**, folgende Environment Variables vor `docker compose up
---build` bzw. vor `mvn spring-boot:run` setzen (Namen bereits exakt wie in Abschnitt 3
-gefordert, siehe auch `README.md` und `docker-compose.yml`):
+- **Connection Test**: `POST /integrations/jira/connection/test` → `success: true`,
+  sowohl über die REST-API als auch über die Settings-Seite im Frontend.
+- **Live Issue Lookup**: `GET /integrations/jira/issues/EVAL-47` liefert korrekt
+  `externalId`, `externalKey=EVAL-47`, `issueType=Story`, `status`, `url`,
+  `summary` und eine korrekt von ADF nach Plain Text konvertierte `description`
+  (mehrzeilige Akzeptanzkriterien, keine ADF-JSON-Artefakte).
+- **Unbekanntes Issue** (`EVAL-999999`): sauberer `404` mit strukturierter
+  `ApiError`, kein `500`, Backend blieb stabil.
+- **Requirement Link End-to-End** (sowohl über die UI — Preview → Confirm — als
+  auch rein über REST, mit einem zweiten, dedizierten Test Case): `externalId`,
+  `externalKey`, `summary`, `url`, `provider` korrekt persistiert; bei der
+  REST-Variante wurde die Anreicherung ohne vorab übergebene `url`/`summary`
+  getestet (nur `provider`+`externalKey`) — funktioniert wie entworfen.
+- **UI-Darstellung**: Requirement-Karte zeigt genau die geforderte Struktur (Key,
+  Summary, `Story · <Status>`, „Open in Jira"), der Link öffnet tatsächlich
+  EVAL-47 in Jira.
+- **Duplicate-Schutz**: zweiter Link-Versuch auf denselben Test Case + EVAL-47
+  wird mit einer klaren Fehlermeldung abgelehnt (weder UI noch REST erzeugen einen
+  zweiten `RequirementLink`).
+- **Removal + Restore**: Link entfernt (Jira-Issue selbst nachweislich unverändert,
+  erneut per Live-Lookup bestätigt), danach sauber erneut verknüpft — finaler
+  Zustand ist sinnvoll (Requirement wieder sichtbar).
+- **Jira-Ausfall-Simulation**: Base-URL temporär auf einen unerreichbaren Host
+  gesetzt (echte Zugangsdaten dabei unverändert) → Connection Test und Issue-Lookup
+  liefern verständliche Fehler (`502`/„Jira is not reachable"), bestehende Test
+  Cases, Requirement Links und ihre Anzeige in der UI blieben währenddessen
+  vollständig nutzbar. Danach echte Verbindung wiederhergestellt und erneut als
+  `success: true` bestätigt.
+- **REST-only-Nachweis** (Abschnitt 14, nicht nur UI): Jira Lookup, Requirement
+  Preview, Requirement Create, Requirement Read, Requirement Delete je einzeln per
+  `curl` gegen die laufende Instanz verifiziert.
 
-```bash
-TESTRYN_JIRA_BASE_URL=https://<tenant>.atlassian.net
-TESTRYN_JIRA_EMAIL=<email>
-TESTRYN_JIRA_API_TOKEN=<api-token>
-```
+**Diagnose-Hinweis (kein Testryn-Bug)**: der erste Connection-Test-Versuch schlug
+mit HTTP 401 fehl. Ursache reproduziert durch einen direkten HTTP-Aufruf mit
+identischer Basic-Auth-Konstruktion außerhalb von Testryns Code — derselbe 401,
+also kein Implementierungsfehler in `JiraIssueClient`. Root Cause: das zunächst
+verwendete Atlassian-API-Token war ein neuerer "scoped" Token, der klassische
+Basic Auth gegen `<tenant>.atlassian.net` nicht unterstützt. Nach Ersetzen durch
+ein klassisches API-Token war die Verbindung sofort erfolgreich. Für zukünftige
+Jira-Token-Einrichtung: ein klassisches API-Token verwenden (id.atlassian.com →
+Account Settings → Security → API tokens → "Create classic API token"), kein
+"API token with scopes".
 
-Danach in der UI: Settings → Jira Connection → „Test connection" muss `SUCCESS`
-zeigen; anschließend ein echter Requirement-Link-Workflow mit einem existierenden
-und einem nicht-existierenden Issue-Key durchspielen (Preview-Karte bzw. sauberer
-404-Fehler). Der komplette Verifikations-Workflow ist in Abschnitt 3/21 beschrieben
-und mit den vorhandenen Frontend-Bausteinen (Settings-Seite, Link-Requirement-Form
-mit Preview) bereits vollständig UI-unterstützt — es fehlen nur die Zugangsdaten.
+**Sicherheit während der Live-Verifikation geprüft**: Token erscheint in keiner
+API-Response (nur `tokenConfigured: true`/`usable: true`), in keinem
+Backend-Log (volle Log-Historie nach Token-Präfix-Mustern und
+`Authorization:`-Headern durchsucht, 0 Treffer), und in keiner im Browser
+sichtbaren Netzwerk-Response. Keine Secrets in dieser Datei, in Git oder in
+Terminal-Ausgaben dieses Blocks.
+
+Die für eine erneute Live-Verifikation benötigten Environment Variables (Namen
+bereits exakt wie erwartet) stehen weiterhin in `README.md`/`docker-compose.yml`:
+`TESTRYN_JIRA_BASE_URL`, `TESTRYN_JIRA_EMAIL`, `TESTRYN_JIRA_API_TOKEN`.
 
 ## Implementierte Features (dieser Block)
 
@@ -187,8 +218,6 @@ Docker-Compose-Stack.
 
 ## Bekannte Einschränkungen / technische Schulden (Ergänzung)
 
-- Jira Live-Verifikation aussteht (siehe oben) — reine Frage fehlender lokaler
-  Zugangsdaten, keine bekannte Implementierungslücke.
 - Kein Auth-/Service-Token-Mechanismus (siehe oben, Backlog → Next).
 - Kein JUnit-XML-/Playwright-/Cypress-/Allure-Importer (bewusst außerhalb dieses
   Blocks, Abschnitt 33) — Architektur dafür vorbereitet (`ResultBatchReader`).
@@ -199,8 +228,7 @@ Docker-Compose-Stack.
 
 ## Nächster sinnvoller Schritt
 
-1. Live-Jira-Verifikation nachholen, sobald Zugangsdaten verfügbar sind (siehe oben)
-   — reine Verifikation, keine Implementierung nötig.
-2. BACKLOG.md → Next priorisieren: API-/Service-Authentication ist der logische
-   nächste Schritt, jetzt wo der CI-Workflow productionsnah funktioniert, aber noch
-   offen im Netzwerk steht.
+BACKLOG.md → Next priorisieren: API-/Service-Authentication ist der logische
+nächste Schritt, jetzt wo sowohl der CI-Workflow als auch die Jira-Integration
+end-to-end gegen echte Systeme verifiziert sind, die API aber weiterhin komplett
+offen im Netzwerk steht.
