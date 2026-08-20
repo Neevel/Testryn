@@ -73,7 +73,8 @@ class RequirementLinkServiceTest {
             @Override
             public Optional<ExternalRequirementInfo> fetch(String externalKey) {
                 return Optional.of(new ExternalRequirementInfo("10042", externalKey,
-                        "https://example.atlassian.net/browse/" + externalKey, "Fetched summary"));
+                        "https://example.atlassian.net/browse/" + externalKey, "Fetched summary",
+                        "Story", "In Progress", null));
             }
         };
         RequirementLinkService service = new RequirementLinkService(requirementLinkRepository, testCaseService, List.of(fakeJira));

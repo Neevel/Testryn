@@ -33,4 +33,11 @@ public class RequirementLinkController {
     public List<RequirementLinkResponse> list(@PathVariable UUID testCaseId) {
         return requirementLinkService.findByTestCase(testCaseId).stream().map(RequirementLinkResponse::from).toList();
     }
+
+    @DeleteMapping("/{linkId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void remove(@PathVariable UUID testCaseId, @PathVariable UUID linkId) {
+        // Only removes Testryn's RequirementLink, never the external issue itself.
+        requirementLinkService.remove(testCaseId, linkId);
+    }
 }

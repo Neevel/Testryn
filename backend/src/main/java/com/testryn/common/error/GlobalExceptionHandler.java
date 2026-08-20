@@ -38,6 +38,11 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request, null);
     }
 
+    @ExceptionHandler(UpstreamServiceException.class)
+    public ResponseEntity<ApiError> handleUpstreamService(UpstreamServiceException ex, HttpServletRequest request) {
+        return build(HttpStatus.BAD_GATEWAY, ex.getMessage(), request, null);
+    }
+
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ApiError> handleIllegalState(IllegalStateException ex, HttpServletRequest request) {
         return build(HttpStatus.CONFLICT, ex.getMessage(), request, null);

@@ -10,6 +10,12 @@ import java.util.UUID;
  * A generic link from a {@link TestCase} to a requirement/issue in an external
  * system. Deliberately provider-agnostic — see ADR 0005. Jira is the first provider,
  * but this entity itself has no Jira-specific fields.
+ *
+ * <p>{@code issueType}/{@code status}/{@code description} are a display-oriented
+ * snapshot taken at link-creation time (or whenever a provider lookup last
+ * succeeded), not a live view of the external system -- Testryn does not poll
+ * external providers to keep them current. Acceptable for the MVP requirement
+ * display (Abschnitt 8); refreshing on demand is a BACKLOG item.</p>
  */
 @Entity
 @Table(name = "requirement_links")
@@ -39,6 +45,15 @@ public class RequirementLink {
     @Column(name = "summary", length = 1000)
     private String summary;
 
+    @Column(name = "issue_type", length = 100)
+    private String issueType;
+
+    @Column(name = "status", length = 100)
+    private String status;
+
+    @Column(name = "description", columnDefinition = "TEXT")
+    private String description;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -47,7 +62,8 @@ public class RequirementLink {
     }
 
     public static RequirementLink create(TestCase testCase, RequirementProviderType provider,
-                                          String externalId, String externalKey, String url, String summary) {
+                                          String externalId, String externalKey, String url, String summary,
+                                          String issueType, String status, String description) {
         RequirementLink link = new RequirementLink();
         link.testCase = testCase;
         link.provider = provider;
@@ -55,6 +71,9 @@ public class RequirementLink {
         link.externalKey = externalKey;
         link.url = url;
         link.summary = summary;
+        link.issueType = issueType;
+        link.status = status;
+        link.description = description;
         link.createdAt = Instant.now();
         return link;
     }
@@ -85,6 +104,18 @@ public class RequirementLink {
 
     public String getSummary() {
         return summary;
+    }
+
+    public String getIssueType() {
+        return issueType;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public String getDescription() {
+        return description;
     }
 
     public Instant getCreatedAt() {

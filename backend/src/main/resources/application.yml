@@ -45,9 +45,12 @@ testryn:
     base-path: ${TESTRYN_STORAGE_BASE_PATH:./data/reports}
     max-upload-size-bytes: 52428800
   jira:
+    name: ${TESTRYN_JIRA_CONNECTION_NAME:Default Jira Connection}
     base-url: ${TESTRYN_JIRA_BASE_URL:}
     email: ${TESTRYN_JIRA_EMAIL:}
     api-token: ${TESTRYN_JIRA_API_TOKEN:}
+    auth-type: ${TESTRYN_JIRA_AUTH_TYPE:API_TOKEN}
+    active: ${TESTRYN_JIRA_ACTIVE:true}
 
 logging:
   level:

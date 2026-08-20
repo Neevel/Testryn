@@ -1,6 +1,7 @@
 package com.testryn.requirement.service;
 
 import com.testryn.common.error.ConflictException;
+import com.testryn.common.error.NotFoundException;
 import com.testryn.requirement.domain.RequirementLink;
 import com.testryn.requirement.domain.RequirementProviderType;
 import com.testryn.requirement.provider.ExternalRequirementInfo;
@@ -42,31 +43,41 @@ public class RequirementLinkService {
     public RequirementLink create(UUID testCaseId, RequirementProviderType provider, String externalKey,
                                    String url, String summary) {
         TestCase testCase = testCaseService.getById(testCaseId);
+        String normalizedKey = normalizeKey(externalKey);
 
-        if (requirementLinkRepository.existsByTestCaseIdAndProviderAndExternalKey(testCaseId, provider, externalKey)) {
+        if (requirementLinkRepository.existsByTestCaseIdAndProviderAndExternalKey(testCaseId, provider, normalizedKey)) {
             throw new ConflictException(
-                    "Requirement link already exists for %s -> %s:%s".formatted(testCase.getHumanId(), provider, externalKey));
+                    "Requirement link already exists for %s -> %s:%s".formatted(testCase.getHumanId(), provider, normalizedKey));
         }
 
         String resolvedUrl = url;
         String resolvedSummary = summary;
         String externalId = null;
+        String issueType = null;
+        String status = null;
+        String description = null;
 
-        if (!StringUtils.hasText(resolvedSummary) || !StringUtils.hasText(resolvedUrl)) {
-            Optional<ExternalRequirementInfo> enrichment = tryFetch(provider, externalKey);
-            if (enrichment.isPresent()) {
-                ExternalRequirementInfo info = enrichment.get();
-                externalId = info.externalId();
-                resolvedUrl = StringUtils.hasText(resolvedUrl) ? resolvedUrl : info.url();
-                resolvedSummary = StringUtils.hasText(resolvedSummary) ? resolvedSummary : info.summary();
-            }
+        // Always attempt enrichment (not just when url/summary are missing): even
+        // when the caller supplied url/summary explicitly, issueType/status/
+        // description can only come from the provider. Best-effort -- never blocks
+        // link creation (ADR 0005).
+        Optional<ExternalRequirementInfo> enrichment = tryFetch(provider, normalizedKey);
+        if (enrichment.isPresent()) {
+            ExternalRequirementInfo info = enrichment.get();
+            externalId = info.externalId();
+            resolvedUrl = StringUtils.hasText(resolvedUrl) ? resolvedUrl : info.url();
+            resolvedSummary = StringUtils.hasText(resolvedSummary) ? resolvedSummary : info.summary();
+            issueType = info.issueType();
+            status = info.status();
+            description = info.description();
         }
 
         if (!StringUtils.hasText(resolvedUrl)) {
             throw new IllegalArgumentException("A requirement link requires a url (none provided and none could be resolved)");
         }
 
-        RequirementLink link = RequirementLink.create(testCase, provider, externalId, externalKey, resolvedUrl, resolvedSummary);
+        RequirementLink link = RequirementLink.create(testCase, provider, externalId, normalizedKey, resolvedUrl,
+                resolvedSummary, issueType, status, description);
         return requirementLinkRepository.save(link);
     }
 
@@ -74,6 +85,17 @@ public class RequirementLinkService {
     public List<RequirementLink> findByTestCase(UUID testCaseId) {
         testCaseService.getById(testCaseId);
         return requirementLinkRepository.findByTestCaseIdOrderByCreatedAtAsc(testCaseId);
+    }
+
+    public void remove(UUID testCaseId, UUID linkId) {
+        testCaseService.getById(testCaseId);
+        RequirementLink link = requirementLinkRepository.findById(linkId)
+                .orElseThrow(() -> NotFoundException.of("RequirementLink", linkId));
+        if (!link.getTestCase().getId().equals(testCaseId)) {
+            throw new NotFoundException("RequirementLink %s does not belong to test case %s".formatted(linkId, testCaseId));
+        }
+        // Only removes Testryn's link, never touches the external issue itself.
+        requirementLinkRepository.delete(link);
     }
 
     private Optional<ExternalRequirementInfo> tryFetch(RequirementProviderType provider, String externalKey) {
@@ -89,5 +111,12 @@ public class RequirementLinkService {
             log.warn("Failed to enrich requirement link {}:{} from provider: {}", provider, externalKey, ex.getMessage());
             return Optional.empty();
         }
+    }
+
+    private String normalizeKey(String externalKey) {
+        if (!StringUtils.hasText(externalKey)) {
+            throw new IllegalArgumentException("externalKey must not be blank");
+        }
+        return externalKey.trim().toUpperCase();
     }
 }

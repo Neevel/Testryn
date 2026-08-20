@@ -29,6 +29,9 @@ public final class RequirementLinkDtos {
             String externalKey,
             String url,
             String summary,
+            String issueType,
+            String status,
+            String description,
             Instant createdAt
     ) {
         public static RequirementLinkResponse from(RequirementLink link) {
@@ -40,6 +43,9 @@ public final class RequirementLinkDtos {
                     link.getExternalKey(),
                     link.getUrl(),
                     link.getSummary(),
+                    link.getIssueType(),
+                    link.getStatus(),
+                    link.getDescription(),
                     link.getCreatedAt()
             );
         }
