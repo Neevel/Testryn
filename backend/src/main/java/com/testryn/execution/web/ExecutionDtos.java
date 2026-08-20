@@ -28,8 +28,15 @@ public final class ExecutionDtos {
     ) {
     }
 
-    public record UpdateExecutionResultRequest(
-            @NotNull ExecutionResultStatus status,
+    /**
+     * Documents the JSON Merge Patch (RFC 7396) request shape for springdoc; the
+     * controller actually binds the raw {@code JsonNode} to distinguish "field
+     * absent" from "field explicitly null" -- see ADR 0006. Every field is
+     * optional: omit it to leave the current value untouched, send it as
+     * {@code null} to clear it (status excepted -- it may never be null).
+     */
+    public record ExecutionResultPatchRequest(
+            ExecutionResultStatus status,
             String comment,
             Long durationMs,
             String executor,

@@ -1,11 +1,14 @@
 package com.testryn.execution.web;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.testryn.common.error.BadRequestException;
 import com.testryn.execution.domain.Execution;
 import com.testryn.execution.domain.ExecutionStatus;
 import com.testryn.execution.service.ExecutionService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -67,11 +70,23 @@ public class ExecutionController {
         return ExecutionResponse.from(execution);
     }
 
-    @PatchMapping("/api/v1/executions/{executionId}/results/{resultId}")
+    @Operation(
+            summary = "Partially update an execution result (JSON Merge Patch, RFC 7396)",
+            description = """
+                    A field absent from the request body keeps its current value. A field present with JSON
+                    null clears it (except `status`, which must never be null). A field present with a value
+                    overwrites it. This lets a manual tester update only `comment` without erasing `durationMs`/
+                    `executor` a CI pipeline had already reported, and vice versa -- see ADR 0006.
+                    """
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            required = true,
+            content = @Content(schema = @Schema(implementation = ExecutionResultPatchRequest.class))
+    )
+    @PatchMapping(value = "/api/v1/executions/{executionId}/results/{resultId}", consumes = "application/json")
     public ExecutionResultResponse updateResult(@PathVariable UUID executionId, @PathVariable UUID resultId,
-                                                 @Valid @RequestBody UpdateExecutionResultRequest request) {
-        var result = executionService.updateResult(executionId, resultId, request.status(), request.comment(),
-                request.durationMs(), request.executor(), request.actualResult(), request.failureDetails());
+                                                 @RequestBody JsonNode patch) {
+        var result = executionService.patchResult(executionId, resultId, patch);
         return ExecutionResultResponse.from(result);
     }
 

@@ -1,11 +1,12 @@
 package com.testryn.execution.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.testryn.common.error.BadRequestException;
 import com.testryn.common.error.NotFoundException;
 import com.testryn.execution.domain.Execution;
 import com.testryn.execution.domain.Execution.SnapshotEntry;
 import com.testryn.execution.domain.ExecutionResult;
-import com.testryn.execution.domain.ExecutionResultStatus;
 import com.testryn.execution.repository.ExecutionRepository;
 import com.testryn.execution.repository.ExecutionResultRepository;
 import com.testryn.project.domain.Project;
@@ -32,17 +33,20 @@ public class ExecutionService {
     private final TestPlanService testPlanService;
     private final ProjectService projectService;
     private final TestCaseService testCaseService;
+    private final ObjectMapper objectMapper;
 
     public ExecutionService(ExecutionRepository executionRepository,
                              ExecutionResultRepository executionResultRepository,
                              TestPlanService testPlanService,
                              ProjectService projectService,
-                             TestCaseService testCaseService) {
+                             TestCaseService testCaseService,
+                             ObjectMapper objectMapper) {
         this.executionRepository = executionRepository;
         this.executionResultRepository = executionResultRepository;
         this.testPlanService = testPlanService;
         this.projectService = projectService;
         this.testCaseService = testCaseService;
+        this.objectMapper = objectMapper;
     }
 
     /** Creates a new, independent iteration of {@code testPlanId} (ADR 0003). */
@@ -110,17 +114,36 @@ public class ExecutionService {
         return executions;
     }
 
-    public ExecutionResult updateResult(UUID executionId, UUID resultId, ExecutionResultStatus status,
-                                         String comment, Long durationMs, String executor, String actualResult,
-                                         String failureDetails) {
+    /**
+     * JSON Merge Patch (RFC 7396) semantics -- see ADR 0006. A field absent from
+     * {@code patch} keeps its current value; a field present with JSON {@code null}
+     * clears it; a field present with a value overwrites it. {@code status} may not
+     * be cleared (an ExecutionResult always has one).
+     */
+    public ExecutionResult patchResult(UUID executionId, UUID resultId, JsonNode patch) {
         Execution execution = getById(executionId);
         ExecutionResult result = executionResultRepository
                 .findByIdAndExecutionTestCase_Execution_Id(resultId, executionId)
                 .orElseThrow(() -> NotFoundException.of("ExecutionResult", resultId));
 
-        result.apply(status, comment, durationMs, executor, actualResult, failureDetails);
+        ExecutionResultPatchState merged = mergePatch(result, patch);
+        if (merged.getStatus() == null) {
+            throw new BadRequestException("status must not be null");
+        }
+
+        result.apply(merged.getStatus(), merged.getComment(), merged.getDurationMs(), merged.getExecutor(),
+                merged.getActualResult(), merged.getFailureDetails());
         execution.markRunningIfNeeded();
         return result;
+    }
+
+    private ExecutionResultPatchState mergePatch(ExecutionResult current, JsonNode patch) {
+        ExecutionResultPatchState state = ExecutionResultPatchState.seedFrom(current);
+        try {
+            return objectMapper.readerForUpdating(state).readValue(patch);
+        } catch (java.io.IOException e) {
+            throw new BadRequestException("Invalid result patch: " + e.getMessage());
+        }
     }
 
     public Execution complete(UUID executionId) {
