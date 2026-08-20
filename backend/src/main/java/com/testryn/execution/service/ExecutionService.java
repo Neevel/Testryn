@@ -111,13 +111,14 @@ public class ExecutionService {
     }
 
     public ExecutionResult updateResult(UUID executionId, UUID resultId, ExecutionResultStatus status,
-                                         String comment, Long durationMs, String executor, String failureDetails) {
+                                         String comment, Long durationMs, String executor, String actualResult,
+                                         String failureDetails) {
         Execution execution = getById(executionId);
         ExecutionResult result = executionResultRepository
                 .findByIdAndExecutionTestCase_Execution_Id(resultId, executionId)
                 .orElseThrow(() -> NotFoundException.of("ExecutionResult", resultId));
 
-        result.apply(status, comment, durationMs, executor, failureDetails);
+        result.apply(status, comment, durationMs, executor, actualResult, failureDetails);
         execution.markRunningIfNeeded();
         return result;
     }

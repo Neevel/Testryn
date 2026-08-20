@@ -5,6 +5,7 @@ import com.testryn.execution.domain.ExecutionResult;
 import com.testryn.execution.domain.ExecutionResultStatus;
 import com.testryn.execution.domain.ExecutionStatus;
 import com.testryn.execution.domain.ExecutionTestCase;
+import com.testryn.testcase.domain.TestCaseVersion;
 import jakarta.validation.constraints.NotNull;
 
 import java.time.Instant;
@@ -32,6 +33,7 @@ public final class ExecutionDtos {
             String comment,
             Long durationMs,
             String executor,
+            String actualResult,
             String failureDetails
     ) {
     }
@@ -43,6 +45,7 @@ public final class ExecutionDtos {
             Long durationMs,
             Instant executedAt,
             String executor,
+            String actualResult,
             String failureDetails
     ) {
         public static ExecutionResultResponse from(ExecutionResult result) {
@@ -53,9 +56,21 @@ public final class ExecutionDtos {
                     result.getDurationMs(),
                     result.getExecutedAt(),
                     result.getExecutor(),
+                    result.getActualResult(),
                     result.getFailureDetails()
             );
         }
+    }
+
+    /** Mirrors {@code com.testryn.testcase.web.TestCaseDtos.StepResponse} on
+     * purpose -- the execution module reads the pinned {@link TestCaseVersion}'s
+     * own steps, not the testcase module's current ones, and should not depend on
+     * another module's web-layer DTOs (module boundaries, AGENTS.md). */
+    public record ExecutionStepResponse(
+            int order,
+            String action,
+            String expectedResult
+    ) {
     }
 
     public record ExecutionTestCaseResponse(
@@ -63,15 +78,24 @@ public final class ExecutionDtos {
             String testCaseHumanId,
             int testCaseVersionNumber,
             String title,
+            String description,
+            String preconditions,
+            List<ExecutionStepResponse> steps,
             int position,
             ExecutionResultResponse result
     ) {
         public static ExecutionTestCaseResponse from(ExecutionTestCase etc) {
+            TestCaseVersion version = etc.getTestCaseVersion();
             return new ExecutionTestCaseResponse(
                     etc.getTestCase().getId(),
                     etc.getTestCase().getHumanId(),
-                    etc.getTestCaseVersion().getVersionNumber(),
-                    etc.getTestCaseVersion().getTitle(),
+                    version.getVersionNumber(),
+                    version.getTitle(),
+                    version.getDescription(),
+                    version.getPreconditions(),
+                    version.getSteps().stream()
+                            .map(s -> new ExecutionStepResponse(s.getStepOrder(), s.getAction(), s.getExpectedResult()))
+                            .toList(),
                     etc.getPosition(),
                     ExecutionResultResponse.from(etc.getResult())
             );

@@ -71,7 +71,7 @@ public class ExecutionController {
     public ExecutionResultResponse updateResult(@PathVariable UUID executionId, @PathVariable UUID resultId,
                                                  @Valid @RequestBody UpdateExecutionResultRequest request) {
         var result = executionService.updateResult(executionId, resultId, request.status(), request.comment(),
-                request.durationMs(), request.executor(), request.failureDetails());
+                request.durationMs(), request.executor(), request.actualResult(), request.failureDetails());
         return ExecutionResultResponse.from(result);
     }
 

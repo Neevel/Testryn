@@ -38,6 +38,11 @@ public class ExecutionResult {
     @Column(name = "executor")
     private String executor;
 
+    /** What actually happened, as observed by the tester -- distinct from the
+     * test case's expected result. Free text, optional. */
+    @Column(name = "actual_result", columnDefinition = "TEXT")
+    private String actualResult;
+
     @Column(name = "failure_details", columnDefinition = "TEXT")
     private String failureDetails;
 
@@ -53,11 +58,12 @@ public class ExecutionResult {
     }
 
     public void apply(ExecutionResultStatus status, String comment, Long durationMs, String executor,
-                       String failureDetails) {
+                       String actualResult, String failureDetails) {
         this.status = status;
         this.comment = comment;
         this.durationMs = durationMs;
         this.executor = executor;
+        this.actualResult = actualResult;
         this.failureDetails = failureDetails;
         this.executedAt = status == ExecutionResultStatus.NOT_RUN ? null : Instant.now();
     }
@@ -88,6 +94,10 @@ public class ExecutionResult {
 
     public String getExecutor() {
         return executor;
+    }
+
+    public String getActualResult() {
+        return actualResult;
     }
 
     public String getFailureDetails() {
