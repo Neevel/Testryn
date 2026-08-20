@@ -103,6 +103,7 @@ API nutzbar. Vollständige, generierte Referenz zur Laufzeit unter
 /api/v1/test-plans/{id}/executions
 /api/v1/executions/{id}
 /api/v1/executions/{id}/results/{resultId}
+/api/v1/executions/{id}/results        (bulk update, for CI pipelines -- see docs/ci-integration.md)
 /api/v1/executions/{id}/reports
 ```
 
@@ -120,3 +121,14 @@ automatisch eine temporäre PostgreSQL-Instanz — Docker muss dafür laufen.
 cd frontend
 npm run test
 ```
+
+```bash
+cd tools/testryn-publisher
+mvn test
+```
+
+## CI-Integration
+
+Wie eine externe Pipeline automatisierte Testergebnisse an Testryn meldet (Test-Case-
+Mapping über `automationReference`, Bulk-Result-Update-API, das `testryn-publisher`-
+CLI-Tool): [docs/ci-integration.md](docs/ci-integration.md).

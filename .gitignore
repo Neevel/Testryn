@@ -1,5 +1,7 @@
 # Backend (Maven/Java)
 backend/target/
+tools/*/target/
+tools/*/dependency-reduced-pom.xml
 *.class
 *.log
 
