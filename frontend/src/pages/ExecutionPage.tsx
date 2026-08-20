@@ -31,8 +31,16 @@ export function ExecutionPage() {
   async function updateResult(resultId: string, status: ExecutionResultStatus) {
     setBusy(true);
     setError(null);
+    let comment: string | undefined;
     try {
-      const comment = window.prompt("Kommentar (optional):") ?? undefined;
+      comment = window.prompt("Kommentar (optional):") ?? undefined;
+    } catch {
+      // Some browser/webview contexts disable window.prompt entirely (it throws
+      // instead of returning null); treat that the same as "no comment entered"
+      // rather than failing the whole result update.
+      comment = undefined;
+    }
+    try {
       await ExecutionsApi.updateResult(id, resultId, { status, comment: comment || undefined });
       load();
     } catch (err) {
