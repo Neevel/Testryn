@@ -7,262 +7,200 @@ Stand: 2026-08-20
 
 ## Aktueller Meilenstein
 
-Der Produktauftrag „Testryn – Product Expansion Block" (49 Abschnitte) ist gemäß der
-darin vorgegebenen Prioritätenreihenfolge (Abschnitt 48) umgesetzt: Result-PATCH-Fix,
-Jira-Integration, Requirement-Workflow, API-Härtung (Suche/Pagination/OpenAPI),
-Execution-Runner-UX, Test-Plan-UX, Frontend-Redesign und Dashboard sind fertig,
-end-to-end im Browser gegen die echte Docker-Stack verifiziert und committet.
-„Kleinere Komfortfeatures" (niedrigste Priorität, Abschnitt 48 Punkt 9) wurde in diesem
-Block bewusst nicht angefasst — kein Korrektheits-/Datenintegritätsrisiko, keine
-offene Anforderung, die etwas anderes blockiert.
+Der Produktauftrag „Testryn – Next Product Block" (CI-/Automations-Workflow) ist
+gemäß der vorgegebenen Priorität (Abschnitt 38) umgesetzt: Bulk-Result-Update,
+`automationReference`, Execution-Mapping, CI-Publisher, Dokumentation und
+Browser-Verifikation sind fertig, end-to-end (inkl. echtem CLI-Lauf gegen die
+laufende Docker-Stack) verifiziert und committet. Der vollständige Workflow „Jira
+Requirement → Test Case → Automation Mapping → Execution → CI → Bulk Results →
+Testryn" funktioniert jetzt technisch, ohne Browser-Automation und ohne
+Framework-Kopplung im Core-Domain-Modell.
 
-## Implementierte Features
+**Live-Jira-Verifikation (Abschnitt 3) ist NICHT durchgeführt** — kein Blocker für
+den Rest des Blocks, aber ein offener Punkt: siehe „Jira Live-Verifikation" unten.
 
-**Backend** (`backend/`, Java 21, Spring Boot 3.3, Maven):
+Der vorherige Block („Product Expansion Block": Result-PATCH-Fix, Jira-Integration,
+Requirement-Workflow, API-Härtung, Frontend-Redesign, Dashboard) ist unverändert
+gültig — siehe Git-Log für Details, hier nur noch das, was sich in diesem Block
+geändert hat.
 
-- Module `project`, `testcase`, `requirement`, `testplan`, `execution`, `report`,
-  `integration.jira`, `common` — siehe AGENTS.md für Domain-Grenzen.
-- **Execution Result PATCH ist jetzt ein echtes partielles Update** (JSON Merge Patch,
-  RFC 7396, via `ObjectMapper#readerForUpdating`): weggelassene Felder bleiben
-  unverändert, explizites `null` löscht ein Feld gezielt. Vorher (Bug, siehe ADR 0006):
-  jedes PATCH war fachlich ein Voll-Replace und hat `durationMs`/`executor`/
-  `actualResult`/`failureDetails` stillschweigend genullt, wenn sie im Request-Body
-  fehlten — z. B. bei jeder reinen Kommentar-Änderung über die UI. Regressionstests in
-  `ExecutionResultPatchTest`.
-- **Jira-Integration** (ADR 0007): Verbindungskonfiguration (Name, Base-URL, Auth-Typ
-  `API_TOKEN`/`OAUTH2`-vorbereitet, Identity, Secret nur aus Environment, Active-Flag),
-  `GET /integrations/jira/connection` liefert **niemals** das Token, `POST
-  /integrations/jira/connection/test` prüft Erreichbarkeit live. `JiraIssueClient`
-  kapselt HTTP-Zugriff (Basic Auth Email+API-Token), extrahiert Klartext aus Atlassian
-  Document Format, wirft `NotFoundException`/`UpstreamServiceException` (→ 404/502)
-  statt 500. Token wird nirgends geloggt.
-- **Requirement-Workflow**: `RequirementLink` um `issueType`/`status`/`description`
-  erweitert; `RequirementLinkService.create()` versucht bei jedem Link eine
-  Best-Effort-Anreicherung über den konfigurierten `RequirementProvider` (unabhängig
-  davon, ob `url`/`summary` schon vorliegen), schlägt aber nie fehl, wenn Jira
-  nicht erreichbar ist — nur `url` ist zwingend (explizit gesetzt oder aus Jira
-  aufgelöst; siehe „In diesem Arbeitsblock gefundene und behobene Fehler"
-  Punkt 1 zur Frontend-Seite davon). Duplikate (gleicher Provider + externalKey am
-  selben Test Case) werden mit 409 abgelehnt. `DELETE .../requirements/{linkId}`
-  entfernt nur den Testryn-Link, nie das Jira-Issue. Neuer Endpoint
-  `GET /projects/{projectKey}/requirements` (projektweite Aggregatsicht).
-- **Suchbare, paginierte Test-Case-Liste** (ADR 0008):
-  `GET /projects/{key}/test-cases?query=&tag=&requirementKey=&status=&priority=&page=&size=`,
-  Response als `PageResponse<T>` (Breaking Change ggü. der vorherigen bloßen Liste,
-  dokumentiert in der ADR). Ermöglicht einem KI-Agenten, vor dem Anlegen eines Test
-  Case auf Near-Duplikate zu prüfen.
-- Test Cases: Anlage mit Steps, projektbezogene menschenlesbare ID (`KEY-TC-n`),
-  Update mit automatischer Versionierung bei inhaltlicher Änderung (ADR 0002),
-  Versionshistorie. **Kein physisches Löschen** von Test Cases — Statuswechsel
-  DRAFT/ACTIVE/DEPRECATED über `updateMetadata`, kein `DELETE`-Endpoint. Damit ist
-  Abschnitt 12 der Anforderung ohne Codeänderung bereits erfüllt; das Modell war
-  bereits aus einem früheren Arbeitsblock vorhanden und wurde in diesem Block nur
-  geprüft, nicht neu gebaut.
-- Test Plans: Anlage, Test Cases hinzufügen/entfernen.
-- Executions: Snapshot-Erzeugung aus einem Test Plan (pinnt Test-Case-Versionen, ADR
-  0003), ad-hoc-Erzeugung ohne Plan, Status-Übergänge (CREATED → RUNNING automatisch
-  beim ersten Ergebnis, COMPLETED/ABORTED manuell).
-- Reports: Upload/Download über `ReportStorage`-Abstraktion (ADR 0004),
-  `FilesystemReportStorage` (Docker-Volume-fähig), serverseitig generierte
-  Storage-Keys (keine Client-Pfade, Directory-Traversal ausgeschlossen — siehe
-  Sicherheitsreview unten), Größen-Limit 50 MB, sichere `Content-Disposition`
-  (RFC-5987-kodierter Dateiname).
-- Export von Test Cases je Projekt als JSON, CSV, Markdown.
-- Einheitliche Fehlerbehandlung (`GlobalExceptionHandler` → `ApiError`), inkl. neuem
-  `UpstreamServiceException` (→ 502) für nicht erreichbare externe Systeme (Jira).
-- OpenAPI/Swagger UI via springdoc (`/swagger-ui.html`); `@Operation`-Beschreibungen
-  für alle in Abschnitt 35 explizit genannten Endpoints (Test Case anlegen,
-  Requirement verknüpfen, Plan anlegen, Execution starten, Result PATCH, Report
-  hochladen) sowie die neue Such-Query.
-- Liquibase-Schema: `0001-initial-schema.sql`, `0002-execution-result-actual-result.sql`,
-  `0003-requirement-link-metadata.sql` (issue_type/status/description).
-- `spring.jpa.open-in-view: false`, gezielte `@EntityGraph`-Queries +
-  `Hibernate.initialize()` für Bag-Collections, die nicht gemeinsam fetch-gejoint
-  werden können (`MultipleBagFetchException`) — unverändert aus dem letzten Block.
+## Jira Live-Verifikation (Abschnitt 3) — dokumentierter Blocker
 
-**Frontend** (`frontend/`, React 18, TypeScript, Vite):
+Diese Entwicklungsumgebung hat keinen Zugriff auf einen Secret Store und keine
+`TESTRYN_JIRA_*`-Umgebungsvariablen gesetzt (`.env` existiert nicht, `env | grep
+JIRA` liefert nichts). Die Jira-Integration selbst (Verbindungskonfiguration,
+Issue-Lookup, ADF-Parsing, Fehlerbehandlung) ist vollständig implementiert und
+unit-/integrationsgetestet **ohne echte Jira-Abhängigkeit** (siehe voriger Block).
+Was in diesem Block fehlt, ist ausschließlich die Verifikation gegen eine *echte*
+Jira-Cloud-Instanz.
 
-- **Design System**: CSS-Custom-Property-Tokens (Farbe/Spacing/Radius/Shadow),
-  konsistente Komponenten für Buttons/Tabellen/Badges/Modals/Formulare/Tabs/
-  Leer-/Lade-/Fehlerzustände. Kein externes UI-Framework — bewusst leichtgewichtig
-  gehalten, da der bestehende Umfang das rechtfertigt.
-- **App-Shell**: linke Sidebar-Navigation (Dashboard/Executions/Settings) + Content-
-  Bereich statt der vorherigen Top-Nav.
-- **Sprache vereinheitlicht auf Englisch** (vorher gemischt Deutsch/Englisch in
-  UI-Strings, z. B. „Als abgeschlossen markieren"/„RUNNING").
-- **Dashboard**: Kennzahlenleiste (Projects/Active Test Cases/Running
-  Executions/Passed/Failed/Blocked), Tabelle „Recently failed executions",
-  Projekt-Karten mit aktiver Test-Case-Zahl und letzten Executions.
-- **Neue globale Executions-Seite** (`/executions`): projektübergreifende Liste.
-- **Neue Settings-Seite** (`/settings`): Jira-Verbindungsstatus-Karte inkl. Live-
-  „Test connection"-Aktion; das Token wird nie im Frontend gehalten oder angezeigt.
-- **Project View**: 5 Tabs (Overview/Test Cases/Test Plans/Executions/Requirements).
-  Test-Cases-Tab mit Such-/Status-/Priority-Filter, Pagination, Export-Links.
-  Neuer Requirements-Tab (projektweite Aggregatsicht).
-- **Test Case View**: Requirement-Links als Karten (Key, Summary, Type · Status,
-  „Open in Jira", „Remove" mit Bestätigung); Link-Workflow mit Jira-Preview
-  (Key eingeben → Preview → Bestätigen) und manuellem Fallback (URL selbst eingeben),
-  wenn Jira nicht erreichbar ist.
-- **Test Plan View**: Kennzahlen (Test-Case-Zahl, Iterationen, letzter Iterations-
-  Status), Iterationen-Tabelle mit Pass-/Fail-Zahlen je Iteration.
-- **Execution View (Runner)**: volle Fortschrittsanzeige (Total/Passed/Failed/
-  Blocked/Skipped/NotRun/Prozent, Created/Started/Finished/Duration), Quicknav mit
-  Status-Icons zum Springen zwischen Test Cases, Ergebnis-Modal mit
-  Status/Comment/Actual Result/Failure Details/**Duration/Executor** (neu), Abschluss-
-  Modal mit vollständiger Zahlen-Übersicht (X Tests / N Passed / N Failed / N Blocked /
-  N Skipped / N Not Run) zusätzlich zur bestehenden NOT_RUN-Warnung.
-- Reiner API-Client (`src/api/`), keine Geschäftslogik in der UI (API-first).
+**Um sie nachzuholen**, folgende Environment Variables vor `docker compose up
+--build` bzw. vor `mvn spring-boot:run` setzen (Namen bereits exakt wie in Abschnitt 3
+gefordert, siehe auch `README.md` und `docker-compose.yml`):
 
-**Infrastruktur:** unverändert — `docker-compose.yml` (PostgreSQL + Backend +
-Frontend), Dockerfiles, persistente Volumes.
+```bash
+TESTRYN_JIRA_BASE_URL=https://<tenant>.atlassian.net
+TESTRYN_JIRA_EMAIL=<email>
+TESTRYN_JIRA_API_TOKEN=<api-token>
+```
 
-## Architekturstand
+Danach in der UI: Settings → Jira Connection → „Test connection" muss `SUCCESS`
+zeigen; anschließend ein echter Requirement-Link-Workflow mit einem existierenden
+und einem nicht-existierenden Issue-Key durchspielen (Preview-Karte bzw. sauberer
+404-Fehler). Der komplette Verifikations-Workflow ist in Abschnitt 3/21 beschrieben
+und mit den vorhandenen Frontend-Bausteinen (Settings-Seite, Link-Requirement-Form
+mit Preview) bereits vollständig UI-unterstützt — es fehlen nur die Zugangsdaten.
 
-Modularer Monolith wie in AGENTS.md/ADRs beschrieben. Neue ADRs in diesem Block:
-0006 (Result-PATCH-Semantik), 0007 (Jira-Verbindungskonfiguration),
-0008 (Test-Case-Suche/Pagination). Keine sonstigen Abweichungen von den bestehenden
-Architekturentscheidungen.
+## Implementierte Features (dieser Block)
 
-## Analysierte, aber zurückgestellte Erweiterungen (Abschnitte 16, 20, 36, 37)
+**Backend** (`backend/`):
 
-Bewusste Entscheidung gegen Implementierung in diesem Block — Details und Nachfolge-
-Items siehe BACKLOG.md → Next:
+- **Bulk Result Update** (ADR 0010):
+  `PATCH /api/v1/executions/{executionId}/results` — mehrere Ergebnisse in einem
+  atomaren Request. Jeder Eintrag folgt derselben JSON-Merge-Patch-Semantik wie der
+  bestehende Einzel-Endpoint (ADR 0006); Ziel-Result wird über `resultId` und/oder
+  `automationReference` bestimmt (müssen bei beidseitiger Angabe übereinstimmen).
+  Dreiphasig implementiert (parsen → Referenzen auflösen → Merges validieren, erst
+  danach mutieren) — garantiert Alles-oder-nichts unabhängig vom
+  `@Transactional`-Rollback und sammelt **alle** Verstöße einer Anfrage, nicht nur
+  den ersten. Strukturierte Fehler über das bestehende `ApiError.fieldErrors`
+  (keine neue Fehlerstruktur). `durationMs < 0` wird jetzt auch beim
+  Einzel-PATCH-Endpoint abgelehnt (dieselbe Merge-Logik, konsistent gemacht).
+- **`automationReference`** (ADR 0009): optionales, projektweit eindeutiges,
+  maschinenfreundliches Feld auf `TestCase` (Migration
+  `0004-test-case-automation-reference.sql`, partieller Unique-Index). Setzen/Ändern
+  über den bestehenden `PUT /test-cases/{id}`-Endpoint (keine Versionierung
+  ausgelöst — Identitäts-/Metadatenfeld wie `status`/`priority`/`tags`). Exakte,
+  case-sensitive Suche über `GET /projects/{key}/test-cases?automationReference=...`.
+  Duplikat-Erkennung auf Service- **und** DB-Ebene.
+- **Execution-Mapping**: `automationReference` wird im Bulk-Endpoint ausschließlich
+  gegen die Test Cases der jeweiligen Execution aufgelöst — nie projektweit, nie mit
+  automatischer Test-Case-Anlage. Eine Referenz, die real existiert, aber nicht Teil
+  dieser Execution ist, wird korrekt abgelehnt (eigener Testfall dafür).
+- OpenAPI-Beschreibungen für den Bulk-Endpoint und den neuen Suchparameter ergänzt,
+  gegen die laufende Instanz verifiziert (`/v3/api-docs`).
 
-- **Evidence/Attachments pro Result** (Abschnitt 16): `Report` hängt aktuell an
-  `Execution`, nicht an `ExecutionResult`. Eine saubere Umsetzung bräuchte eine
-  Fremdschlüssel-Erweiterung plus UI-Änderungen je Test Case — kein trivialer Anbau,
-  daher zurückgestellt statt erzwungen.
-- **Audit/Result-History** (Abschnitt 20): Es existiert kein Auth-/User-Modell, an das
-  ein „wer hat geändert" sinnvoll anknüpfen könnte; `executor` (freies Textfeld) und
-  `comment` decken den MVP-Bedarf für Rückverfolgbarkeit ab. Eine echte
-  Statusübergangs-Historie (voriger Status, neuer Status, Zeitstempel, optional
-  Executor/Kommentar) ist fachlich einfach vorbereitbar, aber als eigenes Feature
-  zurückgestellt statt einer „leichten" Variante, die später doch neu gebaut werden
-  müsste.
-- **Bulk-Result-Update** (Abschnitt 36): Die bestehende Einzel-PATCH-Route reicht für
-  CI-Pipelines mit überschaubarer Testanzahl aus. Ein Bulk-Endpoint
-  (`PATCH /executions/{id}/results` mit mehreren Ergebnissen) ist ein klar
-  umrissenes, unabhängiges Feature — als Next-Item vorgemerkt statt spontan
-  mitgezogen.
-- **`automationReference`-Feld** (Abschnitt 37): Konzept geprüft (Test Case Key vs.
-  externe Automation-ID vs. generische Automation-Reference). Kein Framework-Kopplung
-  gewünscht laut Auftrag; ein optionales Freitextfeld auf `TestCase` wäre die
-  richtige Form, sobald ein konkreter CI-Anwendungsfall ansteht. Ohne einen solchen
-  Anwendungsfall würde das Feld nur ungenutzt im Schema stehen — daher zurückgestellt.
+**Neu: `tools/testryn-publisher`** (ADR 0011) — eigenständiges Maven-Modul, kein
+Spring Boot, eine Produktionsabhängigkeit (Jackson):
 
-## Sicherheitsreview (Abschnitt 39)
+- CLI `testryn-publisher publish --base-url <url> [--execution-id <id>] --results
+  <file|->`, liest eine kleine JSON-Datei oder stdin, sendet sie als einen
+  Bulk-Request.
+- Publisher-Core (`TestrynApiClient`) getrennt vom Input-Format
+  (`ResultBatchReader`, Abschnitt 17) und vom HTTP-Transport (`HttpTransport`) — ein
+  späterer JUnit-XML-Reader würde nur Ersteres implementieren.
+- `executor` defaultet auf `"ci"`, wenn ein Eintrag keinen eigenen Wert mitbringt.
+  `TESTRYN_API_TOKEN` (nur Umgebungsvariable, nie CLI-Argument) wird als Bearer-Token
+  mitgeschickt, falls gesetzt — das Backend ignoriert ihn aktuell (siehe REST-API-Auth
+  unten), der Publisher ist aber bereits vorbereitet.
+- Reale HTTP-Transportschicht nutzt `HttpURLConnection` (nicht
+  `java.net.http.HttpClient` — derselbe NIO-Selector-Konflikt wie beim
+  Jira-Client, AGENTS.md #6a) mit dem klassischen Reflection-Workaround für PATCH,
+  ausgeliefert über einen `Add-Opens`-Manifest-Eintrag im Shaded-Jar — funktioniert
+  dadurch mit einem einfachen `java -jar ...`, ohne zusätzliche JVM-Flags. Empirisch
+  gegen dieses genaue Problem getestet (siehe ADR 0011).
+- Exit-Codes: `0` Erfolg, `1` API-/Transport-Fehler, `2` Usage-Fehler.
 
-Durchgeführt als gezielte Prüfung, keine Neuarchitektur:
+**REST-API-Auth für CI (Abschnitt 20)** — geprüft, bewusst zurückgestellt statt
+erzwungen (ADR 0011): Die API ist aktuell komplett offen. Ein einfacher, globaler
+Service-Token hätte das bestehende (tokenlose) Frontend gebrochen und wirft echte
+Scope-Fragen auf (gilt er für alle Endpoints? Bricht er anonymen UI-Zugriff? Wie
+verhält er sich zu einer künftigen echten Nutzerverwaltung?) — laut Abschnitt 20
+genau die Art Entscheidung, die dokumentiert zurückgestellt statt spontan
+mitimplementiert werden soll. Als Next-Backlog-Item vorgemerkt.
 
-- **Directory Traversal**: ausgeschlossen — `FilesystemReportStorage` verwendet
-  ausschließlich serverseitig generierte Storage-Keys (`projectKey/UUID.ext`),
-  `resolveWithinBase()` normalisiert und prüft `startsWith(basePath)` vor jedem
-  Dateizugriff.
-- **Content-Disposition**: RFC-5987-konform URL-kodiert (`filename*=UTF-8''...`),
-  kein Header-Injection-Vektor über den Dateinamen.
-- **Dateinamen**: nur die Extension (max. 10 alphanumerische Zeichen) wird aus dem
-  Client-Dateinamen übernommen, alles andere wird verworfen.
-- **Größenlimits**: `multipart.max-file-size`/`max-request-size` = 50 MB.
-- **Content-Type**: kein Whitelist-Zwang (reine Anzeige-/Download-Metadatum, keine
-  serverseitige Interpretation), Fallback `application/octet-stream` bei fehlendem
-  Wert.
-- **Secret-Logging**: Jira-API-Token wird an keiner Stelle geloggt (siehe Javadoc auf
-  `JiraIssueClient`); alle Log-Statements bei Jira-Fehlern loggen nur Issue-Key und
-  Fehlermeldung, nie Header/Credentials.
-- **Jira-Token-Exposure**: `GET /integrations/jira/connection` liefert nie das Token,
-  nur einen Konfiguriert-Ja/Nein-Status; das Token wird nie an das Frontend
-  übertragen oder dort gehalten.
-- **API-Validierung**: Bean-Validation auf Request-DTOs, `GlobalExceptionHandler`
-  liefert strukturierte 400er ohne Stacktrace-Leak.
+**Frontend** (`frontend/`) — minimal, gezielt (Abschnitt 33: keine unnötigen
+UI-Änderungen):
 
-Keine konkreten Findings, die einen Fix erfordert hätten.
+- `TestCase.automationReference` im API-Client/Typen ergänzt.
+- Test-Case-Detailseite zeigt einen `🤖 <reference>`-Badge neben Status/Priority/
+  Version, wenn gesetzt; das bestehende Edit-Formular hat ein neues, optionales Feld
+  dafür.
 
-## UI-Review (Abschnitt 42, Selbstkritik nach Browser-Verifikation)
+## Sicherheits-/Scope-relevante Entscheidungen dieses Blocks
 
-- Der Kern-Workflow (Projekt → Test Case → Steps → Jira-Requirement → Test Plan →
-  Execution → PASSED → Abschluss) ist ohne Erklärung nachvollziehbar: jede Seite hat
-  einen klaren primären Call-to-Action, leere Zustände erklären den nächsten Schritt.
-  Status und Fortschritt sind auf jeder relevanten Seite sofort sichtbar (Badges,
-  Fortschrittsbalken, Zahlen).
-- **Ein echter UX-Bruch wurde gefunden während der Verifikation und noch im selben
-  Durchlauf behoben** (siehe unten) — der „Jira nicht erreichbar"-Fallback beim
-  Requirement-Verknüpfen bot keinen Weg, tatsächlich zu verknüpfen, weil das Backend
-  zurecht eine URL verlangt und das Frontend keine abgefragt hat. Jetzt: manuelles
-  URL-Feld im Fallback-Pfad.
-- Keine weiteren unnötigen Klickpfade oder verwirrenden Leerzustände in den
-  verifizierten Bereichen (Dashboard, Executions, Settings, Project/5 Tabs, Test
-  Case Detail, Test Plan, Execution Runner) festgestellt.
+- Kein JUnit-XML-Parser (Abschnitt 33 explizit ausgeschlossen) — aber die
+  `ResultBatchReader`-Schnittstelle im Publisher ist genau die vorbereitete
+  Erweiterungsstelle dafür (Abschnitt 17).
+- Kein Auth-System (siehe oben) — dokumentierter Backlog-Punkt statt stillem
+  Sicherheitsloch.
+- Keine Secrets im Repository oder in Logs: `TESTRYN_API_TOKEN` ausschließlich aus
+  der Umgebung, nie als CLI-Argument, nie geloggt (Publisher-Code enthält keine
+  Log-Ausgabe des Tokens); dieselbe Regel galt bereits für `TESTRYN_JIRA_API_TOKEN`.
 
-## Aktuelles Datenmodell
+## Aktuelles Datenmodell (Ergänzung)
 
-Siehe `backend/src/main/resources/db/changelog/changes/`:
-`projects`, `test_cases`, `test_case_tags`, `test_case_versions`, `test_steps`,
-`requirement_links` (+ `issue_type`/`status`/`description`), `test_plans`,
-`test_plan_entries`, `executions`, `execution_test_cases`, `execution_results`
-(inkl. `actual_result`), `reports`.
+`test_cases` hat jetzt zusätzlich `automation_reference` (nullable, partieller
+Unique-Index je `project_id`). Sonst unverändert gegenüber dem vorigen Block.
 
 ## Teststatus
 
-Stand: 2026-08-20, verifiziert lokal (Windows, Docker Desktop 29.6.1) sowie via
+Stand: 2026-08-20, verifiziert lokal (Windows, Docker Desktop) sowie via
 Docker-Compose-Stack.
 
-- **`cd backend && mvn test`: 41/41 Tests grün** (0 Failures, 0 Errors). Neu in diesem
-  Block: `ExecutionResultPatchTest` (7, PATCH-Partial-Update inkl. Regressionstest für
-  den behobenen Bug), `JiraIssueClientTest`/`JiraIssueClientHttpTest` (nicht
-  konfiguriert, nicht erreichbar, 404, ADF-Parsing — via `MockRestServiceServer`, kein
-  echter Socket), `RequirementWorkflowTest` (6, Duplikat-Erkennung inkl.
-  Case-Insensitivität, Link-Entfernung, Jira-Status-Endpoints ohne Konfiguration),
-  `TestCaseSearchTest` (8, alle Filterkombinationen + Pagination).
-- `cd frontend && npm run build`: fehlerfrei (TypeScript-Typecheck + Vite-Build).
-- **Browser-Verifikation (Abschnitt 41) gegen `docker compose up --build`, alle vier
-  Workflows durchgespielt:**
-  - **Workflow A** (Projekt → Test Case → Steps → Jira-Requirement → Test Plan →
-    Execution → PASSED → Abschluss): vollständig durchlaufen, inkl. Requirement-Link
-    über den manuellen Fallback (Jira in dieser Umgebung nicht konfiguriert).
-  - **Workflow B** (Test Case v1 → Execution → Test Case ändern → v2/v3 → alte
-    Execution zeigt weiterhin die ursprüngliche Version): verifiziert — Test Case auf
-    v3 gebracht, abgeschlossene Execution zeigt weiterhin unverändert „v2".
-  - **Workflow C** (Result hat Duration+Executor → UI ändert nur Comment → Duration+
-    Executor bleiben erhalten): verifiziert end-to-end über echte UI → echte API →
-    echte DB — bestätigt den PATCH-Fix reproduzierbar, nicht nur in Unit-Tests.
-  - **Workflow D** (Jira-Key eingeben → Issue-Preview → Verknüpfen → Requirement
-    sichtbar am Test Case): verifiziert über den Fallback-Pfad (Jira unkonfiguriert in
-    dieser Umgebung) — Preview-Pfad selbst ist durch `JiraIssueClientHttpTest`
-    abgedeckt.
+- **`cd backend && mvn test`: 67/67 grün** (0 Failures, 0 Errors). Neu in diesem
+  Block: `BulkResultUpdateTest` (16 — gültige Updates per resultId/
+  automationReference, CREATED→RUNNING, Partial-Semantik über einen manuellen Edit +
+  CI-Re-Report hinweg, atomarer Rollback bei einem ungültigen Eintrag, fremdes
+  Result aus anderer Execution, unbekanntes Result, doppelte Result-IDs, ungültiger
+  Status, negative Duration, übereinstimmende/widersprüchliche resultId+
+  automationReference, fehlende Referenz, automationReference außerhalb dieser
+  Execution, unbekannte automationReference, leeres results-Array),
+  `AutomationReferenceTest` (10 — Setzen, optional, Formatvalidierung, exakte Suche
+  inkl. Case-Sensitivität, Duplikat bei Anlage/Update, Selbst-Update ohne
+  Selbst-Konflikt, keine Versionserhöhung).
+- **`cd tools/testryn-publisher && mvn test`: 35/35 grün** — komplett gegen
+  `FakeHttpTransport`/In-Memory-Streams, kein echter Socket im Test (Abschnitt 31):
+  JSON-Parsing (7), CLI-Parsing (8), `TestrynApiClient`-Logik inkl. Bearer-Token,
+  executor-Default, Fehlerinterpretation (11), `PublisherMain`-Exitcodes/
+  Execution-ID-Auflösung (9).
+- `cd frontend && npm run build`: fehlerfrei. `npm run test`: 5/5 grün (unverändert
+  gegenüber vorigem Block).
+- **Browser-Verifikation (Abschnitt 32) gegen `docker compose up --build`, alle
+  fünf Workflows durchgespielt** (neues Projekt `CIWF`, 3 Test Cases mit
+  `automationReference` `auth.login.valid`/`invalid`/`locked`, Plan, Execution — via
+  UI und API angelegt):
+  - **Workflow A** (Jira Issue lookup → Requirement Link): blockiert durch fehlende
+    Live-Credentials (siehe oben); Settings-Seite zeigt weiterhin korrekt „not
+    configured"/„Not usable", „Test connection" liefert die saubere
+    Fehlermeldung „Jira connection is not configured or not active".
+  - **Workflow B** (Test Case → automationReference → Plan → Execution): verifiziert
+    — Badge `🤖 auth.login.valid` auf der Detailseite, Feld im Edit-Formular korrekt
+    vorbefüllt, alle drei Test Cases im Plan und in der Execution sichtbar.
+  - **Workflow C** (Publisher → 3 Bulk Results → UI zeigt korrekte Ergebnisse):
+    verifiziert — **echter Lauf des gebauten `testryn-publisher.jar`** (nicht nur
+    Unit-Tests) gegen die laufende Instanz: PASSED/FAILED/SKIPPED, Duration und
+    Executor (`ci`) korrekt in der UI sichtbar, Execution automatisch auf RUNNING,
+    Fortschritt 100 %, Quicknav-Icons (✓/✗/») korrekt.
+  - **Workflow D** (manuelle Result-Daten vorhanden → CI-Partial-Update → Daten
+    bleiben erhalten): verifiziert end-to-end über echte UI (Kommentar manuell
+    gesetzt) → echter erneuter Publisher-Lauf (nur status/durationMs/executor,
+    kein comment) → Kommentar in der UI weiterhin vorhanden, Duration aktualisiert.
+  - **Workflow E** (ungültige Bulk-Anfrage → kein Result verändert): verifiziert —
+    Publisher-Lauf mit einem gültigen + einem unbekannten Eintrag liefert Exit-Code 1
+    und lässt das gültige Ergebnis (`auth.login.locked`) unverändert auf SKIPPED
+    stehen, nicht auf das im selben Request fälschlich angeforderte PASSED.
+- **Pipeline-Simulation (Abschnitt 23)**: durchgespielt als Teil der obigen
+  Browser-Verifikation (Execution erstellen → lokale Results-JSON erzeugen →
+  Publisher ausführen → Bulk API → UI öffnen → Ergebnisse/Duration/Executor
+  geprüft → vorhandene manuelle Felder blieben erhalten).
 
-### In diesem Arbeitsblock gefundene und behobene Fehler
+## Bekannte Einschränkungen / technische Schulden (Ergänzung)
 
-1. **Result-PATCH war fachlich ein Voll-Replace** (Kernauftrag dieses Blocks, siehe
-   ADR 0006) — behoben durch JSON Merge Patch.
-2. **Requirement-Link-Fallback ohne Jira-Erreichbarkeit war ein Dead End**: das
-   Frontend rief beim „Kann Jira nicht erreichen"-Pfad `create()` nur mit
-   `externalKey` auf; das Backend verlangt zurecht eine `url` (ein Requirement-Link
-   ohne Link ist für die „Open in Jira"-Anzeige witzlos) und lehnte mit 400 ab, ohne
-   dass die UI einen Weg zum Fortfahren bot. Gefunden während der Browser-
-   Verifikation (Abschnitt 41), noch im selben Durchlauf behoben: der Fallback-Pfad
-   fragt jetzt die Issue-URL (Pflichtfeld) und optional eine Summary manuell ab.
-
-## Bekannte Einschränkungen / technische Schulden
-
-- Lombok bewusst nicht verwendet (JDK-Kompatibilität, siehe frühere Einträge).
-- Authentifizierung weiterhin bewusst minimal im MVP (kein Enterprise-Rollenmodell).
-- Report-Interpretation (JUnit/TestNG/Allure-Parsing) nicht implementiert.
-- Jira-Integration ist rein lesend; keine Rückschreib-Synchronisation, kein OAuth 2.0
-  (Architektur lässt es zu — `JiraAuthType.OAUTH2` existiert bereits als Enum-Wert,
-  ist aber nicht implementiert).
-- Evidence/Attachments pro Result, Audit-Historie, Bulk-Result-Update,
-  `automationReference` — analysiert, bewusst zurückgestellt (siehe oben und
-  BACKLOG.md → Next).
-- Jira-Forge-App-Vorbereitung (Abschnitt 43): nicht implementiert, aber die
-  bestehende REST-API (`GET /test-cases/{id}/requirements`,
-  `GET /projects/{key}/requirements`, Execution-Status/Progress-Endpoints) liefert
-  bereits alles, was eine spätere Forge-App bräuchte, ohne Architekturumbau — siehe
-  BACKLOG.md → Later.
+- Jira Live-Verifikation aussteht (siehe oben) — reine Frage fehlender lokaler
+  Zugangsdaten, keine bekannte Implementierungslücke.
+- Kein Auth-/Service-Token-Mechanismus (siehe oben, Backlog → Next).
+- Kein JUnit-XML-/Playwright-/Cypress-/Allure-Importer (bewusst außerhalb dieses
+  Blocks, Abschnitt 33) — Architektur dafür vorbereitet (`ResultBatchReader`).
+- `automationReference` ist nicht Teil des Test-Case-Anlage-Formulars im Frontend
+  (`NewTestCaseForm`), nur im Edit-Formular — bewusst minimal gehalten (Abschnitt
+  33); ein Test Case bekommt seine Automation-Referenz typischerweise erst, wenn die
+  Automatisierung selbst existiert, meist nach der manuellen Erstanlage.
 
 ## Nächster sinnvoller Schritt
 
-„Kleinere Komfortfeatures" (Abschnitt 48, Punkt 9, niedrigste Priorität dieses
-Blocks) sowie die in BACKLOG.md → Next neu aufgenommenen Punkte (Bulk-Result-Update,
-Audit-Trail, Evidence pro Result) sind die logischen nächsten Kandidaten — in dieser
-Reihenfolge, weil sie auf der jetzt stabilen PATCH-/Such-/Jira-Basis aufsetzen, ohne
-weitere Grundlagenarbeit zu erfordern.
+1. Live-Jira-Verifikation nachholen, sobald Zugangsdaten verfügbar sind (siehe oben)
+   — reine Verifikation, keine Implementierung nötig.
+2. BACKLOG.md → Next priorisieren: API-/Service-Authentication ist der logische
+   nächste Schritt, jetzt wo der CI-Workflow productionsnah funktioniert, aber noch
+   offen im Netzwerk steht.

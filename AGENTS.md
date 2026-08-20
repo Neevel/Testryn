@@ -140,6 +140,16 @@ Siehe [docs/adr/0001-persistence-strategy.md](docs/adr/0001-persistence-strategy
   `ClientHttpRequestFactory`-Ebene, kein echter Socket) statt eines echten
   eingebetteten Servers (`com.sun.net.httpserver.HttpServer` ist von demselben
   Problem betroffen).
+- **Outbound HTTP außerhalb von Spring (eigenständige Tools wie
+  `tools/testryn-publisher`): plain `HttpURLConnection`, nicht `java.net.http.HttpClient`.**
+  Derselbe NIO-Selector-Konflikt wie oben betrifft auch den JDK-eigenen
+  `java.net.http.HttpClient` (nicht nur Spring). `HttpUrlConnectionTransport`
+  verwendet daher klassisches `HttpURLConnection`; für PATCH (das
+  `HttpURLConnection` seit jeher nicht in seiner Methoden-Whitelist hat) den
+  Standard-Reflection-Workaround auf das `method`-Feld, ausgeliefert über einen
+  `Add-Opens: java.base/java.net`-Manifest-Eintrag im Shaded-Jar (siehe ADR 0011).
+  Tests gegen einen solchen Client injizieren ein kleines `HttpTransport`-Interface
+  mit einer Fake-Implementierung — kein echter Socket, kein eingebetteter Server.
 
 ## 7. Out of Scope (MVP)
 
