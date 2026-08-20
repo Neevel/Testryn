@@ -37,6 +37,9 @@ export interface TestCase {
   status: TestCaseStatus;
   priority: TestCasePriority;
   tags: string[];
+  /** Stable CI mapping key, e.g. "auth.login.valid" (ADR 0009). Null if this test
+   * case has no automated counterpart. */
+  automationReference: string | null;
   currentVersion: TestCaseVersion | null;
   createdAt: string;
   updatedAt: string;

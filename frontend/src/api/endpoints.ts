@@ -34,6 +34,7 @@ export interface TestCaseSearchParams {
   requirementKey?: string;
   status?: TestCaseStatus;
   priority?: TestCasePriority;
+  automationReference?: string;
   page?: number;
   size?: number;
 }
@@ -46,6 +47,7 @@ export const TestCasesApi = {
     if (params.requirementKey) qs.set("requirementKey", params.requirementKey);
     if (params.status) qs.set("status", params.status);
     if (params.priority) qs.set("priority", params.priority);
+    if (params.automationReference) qs.set("automationReference", params.automationReference);
     qs.set("page", String(params.page ?? 0));
     qs.set("size", String(params.size ?? 20));
     return api.get<PageResponse<TestCase>>(`/api/v1/projects/${projectKey}/test-cases?${qs.toString()}`);
@@ -63,6 +65,7 @@ export const TestCasesApi = {
       priority: TestCasePriority;
       tags: string[];
       steps: Step[];
+      automationReference?: string | null;
     },
   ) => api.post<TestCase>(`/api/v1/projects/${projectKey}/test-cases`, input),
   update: (
@@ -75,6 +78,7 @@ export const TestCasesApi = {
       status: TestCaseStatus;
       priority: TestCasePriority;
       tags: string[];
+      automationReference?: string | null;
     },
   ) => api.put<TestCase>(`/api/v1/test-cases/${id}`, input),
   exportUrl: (projectKey: string, format: "json" | "csv" | "markdown") =>

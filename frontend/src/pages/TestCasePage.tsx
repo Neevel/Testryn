@@ -61,6 +61,11 @@ export function TestCasePage() {
           <StatusBadge value={testCase.status} />
           <span className="badge">{testCase.priority}</span>
           <span className="muted">v{testCase.currentVersion?.versionNumber}</span>
+          {testCase.automationReference && (
+            <span className="badge" title="Automation reference (ADR 0009)" style={{ fontFamily: "monospace" }}>
+              🤖 {testCase.automationReference}
+            </span>
+          )}
           {testCase.tags.map((tag) => (
             <span className="tag" key={tag}>
               {tag}
@@ -149,6 +154,7 @@ function EditForm({ testCase, onSaved }: { testCase: TestCase; onSaved: () => vo
   const [status, setStatus] = useState(testCase.status);
   const [priority, setPriority] = useState(testCase.priority);
   const [tags, setTags] = useState(testCase.tags.join(", "));
+  const [automationReference, setAutomationReference] = useState(testCase.automationReference ?? "");
   const [steps, setSteps] = useState(cv?.steps.map((s) => ({ action: s.action, expectedResult: s.expectedResult })) ?? []);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -168,6 +174,7 @@ function EditForm({ testCase, onSaved }: { testCase: TestCase; onSaved: () => vo
           .split(",")
           .map((t) => t.trim())
           .filter(Boolean),
+        automationReference: automationReference.trim() || null,
         steps: steps.map((s, i) => ({ order: i + 1, action: s.action, expectedResult: s.expectedResult })),
       });
       onSaved();
@@ -213,6 +220,15 @@ function EditForm({ testCase, onSaved }: { testCase: TestCase; onSaved: () => vo
       <div className="form-row">
         <label>Tags (comma-separated)</label>
         <input value={tags} onChange={(e) => setTags(e.target.value)} />
+      </div>
+      <div className="form-row">
+        <label>Automation reference</label>
+        <input
+          value={automationReference}
+          onChange={(e) => setAutomationReference(e.target.value)}
+          placeholder="e.g. auth.login.valid (optional, for CI result mapping)"
+          style={{ fontFamily: "monospace" }}
+        />
       </div>
       <div className="form-row">
         <label>Steps</label>
