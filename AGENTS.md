@@ -118,6 +118,29 @@ Siehe [docs/adr/0001-persistence-strategy.md](docs/adr/0001-persistence-strategy
 - Authentifizierung bewusst einfach im MVP, aber architektonisch erweiterbar (kein
   Enterprise-Rollenmodell erzwingen).
 
+## 6a. Verbindliche technische Muster (aus konkreten Vorfällen gelernt)
+
+- **Testcontainers: Singleton-Pattern statt `@Testcontainers`/`@Container`.**
+  `AbstractIntegrationTest` startet den `PostgreSQLContainer` manuell in einem
+  statischen Initializer (`static { POSTGRES.start(); }`), ohne
+  `@Testcontainers`/`@Container`-Annotationen. Grund: JUnits klassenweise
+  Container-Lifecycle mit diesen Annotationen stoppt den Container nach der ersten
+  Testklasse, die von der gemeinsamen Basisklasse erbt — jede weitere Integrations-
+  Testklasse im selben JVM-Lauf schlägt dann mit „Connection refused" fehl. Der
+  Ryuk-Resource-Reaper übernimmt die Bereinigung beim JVM-Exit. Nicht auf die
+  Annotationen zurückbauen, auch wenn sie idiomatischer aussehen.
+- **Outbound HTTP (z. B. neue Integrationen nach Jira-Vorbild):
+  `RestClient` mit `SimpleClientHttpRequestFactory`, nie der JDK-`HttpClient`-Default.**
+  `JiraIssueClient` baut seinen `RestClient` explizit mit
+  `SimpleClientHttpRequestFactory` (blockierend, `HttpURLConnection`-basiert) statt
+  über `RestClient.builder().build()`. In manchen containerisierten/sandboxed
+  Umgebungen scheitert die NIO-`Selector`-Erzeugung des JDK-`HttpClient` bereits bei
+  der Client-Konstruktion. Tests gegen einen solchen Client verwenden
+  `MockRestServiceServer.bindTo(RestClient.Builder)` (mockt auf
+  `ClientHttpRequestFactory`-Ebene, kein echter Socket) statt eines echten
+  eingebetteten Servers (`com.sun.net.httpserver.HttpServer` ist von demselben
+  Problem betroffen).
+
 ## 7. Out of Scope (MVP)
 
 Siehe `BACKLOG.md` → Later. Nicht bauen: Atlassian Marketplace App, eigener MCP Server,
