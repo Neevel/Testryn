@@ -24,6 +24,8 @@ public final class RequirementLinkDtos {
     public record RequirementLinkResponse(
             UUID id,
             UUID testCaseId,
+            String testCaseHumanId,
+            String testCaseTitle,
             RequirementProviderType provider,
             String externalId,
             String externalKey,
@@ -35,9 +37,12 @@ public final class RequirementLinkDtos {
             Instant createdAt
     ) {
         public static RequirementLinkResponse from(RequirementLink link) {
+            var testCase = link.getTestCase();
             return new RequirementLinkResponse(
                     link.getId(),
-                    link.getTestCase().getId(),
+                    testCase.getId(),
+                    testCase.getHumanId(),
+                    testCase.getCurrentVersion() == null ? null : testCase.getCurrentVersion().getTitle(),
                     link.getProvider(),
                     link.getExternalId(),
                     link.getExternalKey(),

@@ -2,6 +2,7 @@ package com.testryn.requirement.service;
 
 import com.testryn.common.error.ConflictException;
 import com.testryn.common.error.NotFoundException;
+import com.testryn.project.service.ProjectService;
 import com.testryn.requirement.domain.RequirementLink;
 import com.testryn.requirement.domain.RequirementProviderType;
 import com.testryn.requirement.provider.ExternalRequirementInfo;
@@ -29,13 +30,16 @@ public class RequirementLinkService {
 
     private final RequirementLinkRepository requirementLinkRepository;
     private final TestCaseService testCaseService;
+    private final ProjectService projectService;
     private final Map<RequirementProviderType, RequirementProvider> providersByType;
 
     public RequirementLinkService(RequirementLinkRepository requirementLinkRepository,
                                    TestCaseService testCaseService,
+                                   ProjectService projectService,
                                    List<RequirementProvider> providers) {
         this.requirementLinkRepository = requirementLinkRepository;
         this.testCaseService = testCaseService;
+        this.projectService = projectService;
         this.providersByType = providers.stream()
                 .collect(java.util.stream.Collectors.toMap(RequirementProvider::type, Function.identity()));
     }
@@ -85,6 +89,13 @@ public class RequirementLinkService {
     public List<RequirementLink> findByTestCase(UUID testCaseId) {
         testCaseService.getById(testCaseId);
         return requirementLinkRepository.findByTestCaseIdOrderByCreatedAtAsc(testCaseId);
+    }
+
+    /** Backs the project-level "Requirements" navigation tab (Abschnitt 27). */
+    @Transactional(readOnly = true)
+    public List<RequirementLink> findByProjectKey(String projectKey) {
+        var project = projectService.getByKey(projectKey);
+        return requirementLinkRepository.findByTestCase_Project_IdOrderByCreatedAtDesc(project.getId());
     }
 
     public void remove(UUID testCaseId, UUID linkId) {

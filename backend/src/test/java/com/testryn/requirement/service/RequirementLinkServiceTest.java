@@ -2,6 +2,7 @@ package com.testryn.requirement.service;
 
 import com.testryn.common.error.ConflictException;
 import com.testryn.project.domain.Project;
+import com.testryn.project.service.ProjectService;
 import com.testryn.requirement.domain.RequirementLink;
 import com.testryn.requirement.domain.RequirementProviderType;
 import com.testryn.requirement.provider.ExternalRequirementInfo;
@@ -38,6 +39,8 @@ class RequirementLinkServiceTest {
     private RequirementLinkRepository requirementLinkRepository;
     @Mock
     private TestCaseService testCaseService;
+    @Mock
+    private ProjectService projectService;
 
     private TestCase testCase;
     private final UUID testCaseId = UUID.randomUUID();
@@ -51,7 +54,7 @@ class RequirementLinkServiceTest {
 
     @Test
     void createsLinkWithoutAnyConfiguredProvider() {
-        RequirementLinkService service = new RequirementLinkService(requirementLinkRepository, testCaseService, List.of());
+        RequirementLinkService service = new RequirementLinkService(requirementLinkRepository, testCaseService, projectService, List.of());
         when(testCaseService.getById(testCaseId)).thenReturn(testCase);
 
         RequirementLink link = service.create(testCaseId, RequirementProviderType.JIRA, "BIT-27",
@@ -77,7 +80,7 @@ class RequirementLinkServiceTest {
                         "Story", "In Progress", null));
             }
         };
-        RequirementLinkService service = new RequirementLinkService(requirementLinkRepository, testCaseService, List.of(fakeJira));
+        RequirementLinkService service = new RequirementLinkService(requirementLinkRepository, testCaseService, projectService, List.of(fakeJira));
         when(testCaseService.getById(testCaseId)).thenReturn(testCase);
 
         RequirementLink link = service.create(testCaseId, RequirementProviderType.JIRA, "BIT-27", null, null);
@@ -89,7 +92,7 @@ class RequirementLinkServiceTest {
 
     @Test
     void rejectsDuplicateLinkForSameProviderAndKey() {
-        RequirementLinkService service = new RequirementLinkService(requirementLinkRepository, testCaseService, List.of());
+        RequirementLinkService service = new RequirementLinkService(requirementLinkRepository, testCaseService, projectService, List.of());
         when(testCaseService.getById(testCaseId)).thenReturn(testCase);
         when(requirementLinkRepository.existsByTestCaseIdAndProviderAndExternalKey(
                 testCaseId, RequirementProviderType.JIRA, "BIT-27")).thenReturn(true);
