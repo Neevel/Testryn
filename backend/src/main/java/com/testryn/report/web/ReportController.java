@@ -2,6 +2,7 @@ package com.testryn.report.web;
 
 import com.testryn.report.domain.Report;
 import com.testryn.report.service.ReportService;
+import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -27,6 +28,13 @@ public class ReportController {
         this.reportService = reportService;
     }
 
+    @Operation(
+            summary = "Upload a report/evidence file for an execution",
+            description = "Multipart upload, max 50MB (`multipart.max-file-size`). The stored object key is "
+                    + "always server-generated -- the client-supplied filename is used only as display "
+                    + "metadata, never to build a filesystem path. No automatic interpretation of the file "
+                    + "content is performed."
+    )
     @PostMapping(value = "/api/v1/executions/{executionId}/reports", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     public ReportResponse upload(@PathVariable UUID executionId, @RequestParam("file") MultipartFile file) {

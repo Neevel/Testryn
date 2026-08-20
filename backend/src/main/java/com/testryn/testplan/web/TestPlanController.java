@@ -2,6 +2,7 @@ package com.testryn.testplan.web;
 
 import com.testryn.testplan.domain.TestPlan;
 import com.testryn.testplan.service.TestPlanService;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +23,13 @@ public class TestPlanController {
         this.testPlanService = testPlanService;
     }
 
+    @Operation(
+            summary = "Create a test plan",
+            description = "A test plan is a reusable, named collection of test cases. Starting an execution "
+                    + "from a plan (`POST /api/v1/test-plans/{id}/executions`) takes an immutable snapshot of "
+                    + "each contained test case's current version -- editing the plan or its test cases later "
+                    + "never changes a past execution."
+    )
     @PostMapping("/api/v1/projects/{projectKey}/test-plans")
     public ResponseEntity<TestPlanResponse> create(@PathVariable String projectKey,
                                                      @Valid @RequestBody CreateTestPlanRequest request) {

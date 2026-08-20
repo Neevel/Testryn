@@ -38,6 +38,14 @@ public class TestCaseController {
         this.testCaseExportService = testCaseExportService;
     }
 
+    @Operation(
+            summary = "Create a test case",
+            description = """
+                    Creates a new test case in DRAFT status with an initial version (v1) built from the given
+                    title/description/preconditions/steps. Before creating, consider searching first
+                    (`GET /api/v1/projects/{projectKey}/test-cases?query=...`) to avoid near-duplicates.
+                    """
+    )
     @PostMapping("/api/v1/projects/{projectKey}/test-cases")
     public ResponseEntity<TestCaseResponse> create(@PathVariable String projectKey,
                                                      @Valid @RequestBody CreateTestCaseRequest request) {

@@ -28,6 +28,13 @@ public class ExecutionController {
         this.executionService = executionService;
     }
 
+    @Operation(
+            summary = "Start an execution from a test plan (a new iteration)",
+            description = "Takes an immutable snapshot of the current version of every test case in the plan "
+                    + "at this moment (title/description/preconditions/steps). Editing the plan or its test "
+                    + "cases afterwards never changes this execution's snapshot. `name` is optional; if "
+                    + "omitted, an iteration name/number is generated."
+    )
     @PostMapping("/api/v1/test-plans/{testPlanId}/executions")
     public ResponseEntity<ExecutionResponse> createFromPlan(@PathVariable UUID testPlanId,
                                                               @RequestBody(required = false) CreateExecutionRequest request) {

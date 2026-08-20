@@ -1,6 +1,7 @@
 package com.testryn.requirement.web;
 
 import com.testryn.requirement.service.RequirementLinkService;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -20,6 +21,16 @@ public class RequirementLinkController {
         this.requirementLinkService = requirementLinkService;
     }
 
+    @Operation(
+            summary = "Link a requirement (e.g. a Jira issue) to a test case",
+            description = """
+                    `url` is required either explicitly or resolvable by enrichment: if the configured
+                    provider (currently Jira) can reach the issue, issueType/status/description/summary/url are
+                    filled in automatically (any explicitly supplied url/summary win). If the provider is
+                    unreachable, the caller must supply `url` itself. Duplicate links (same provider +
+                    externalKey on the same test case) are rejected with 409 Conflict.
+                    """
+    )
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public RequirementLinkResponse create(@PathVariable UUID testCaseId,
