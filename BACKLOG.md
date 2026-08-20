@@ -16,14 +16,19 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 - [x] Export: JSON, CSV, Markdown (Test Cases inkl. Steps)
 - [x] OpenAPI-Dokumentation (springdoc)
 - [x] Frontend: Dashboard, Project View, Test Case View, Test Plan View, Execution View
-- [x] Workflow-Tests 1–5 (siehe Produktauftrag Abschnitt 12) automatisiert geschrieben
-      — Ausführung gegen echtes PostgreSQL (Testcontainers) noch nicht in dieser
-      Umgebung verifiziert, siehe PROJECT_STATUS.md
-- [ ] `README.md` Quick Start lokal mit `docker compose up --build` verifizieren
-      (in dieser Session mangels laufendem Docker Desktop nicht möglich)
+- [x] Workflow-Tests 1–5 (siehe Produktauftrag Abschnitt 12) automatisiert, gegen
+      echtes PostgreSQL via Testcontainers grün (`mvn test`, 12/12), siehe
+      PROJECT_STATUS.md
+- [x] `README.md` Quick Start mit `docker compose up --build` verifiziert; Milestone-
+      1-Workflow einmal über REST-API und einmal über die UI durchgespielt, inkl.
+      Versions-/Snapshot-Stabilität und byte-genauem Report-Roundtrip
 
 ## Next
 
+- Repository-Lesepfade (`TestPlan`, `TestCase`, `Execution`) auf gezielte
+  `LEFT JOIN FETCH`/`@EntityGraph`-Queries umstellen, danach `spring.jpa.open-in-view`
+  wieder auf `false` setzen (aktuell `true` als Sofortfix gegen
+  LazyInitializationException, siehe PROJECT_STATUS.md)
 - Volltextsuche/Filter für Test Cases (Status, Priority, Tags)
 - Bulk-Requirement-Link-Abgleich ("existieren bereits ähnliche Test Cases zu Story X?")
 - Report-Importer für JUnit-XML (automatische Ergebnis-Interpretation)
