@@ -41,7 +41,7 @@ class CriticalWorkflowsTest extends AbstractIntegrationTest {
                  "url":"https://example.atlassian.net/browse/BIT-27","summary":"Login story"}
                 """;
         mockMvc.perform(post("/api/v1/test-cases/{id}/requirements", testCaseId)
-                        .contentType("application/json").content(requirementBody))
+                        .contentType("application/json").characterEncoding(java.nio.charset.StandardCharsets.UTF_8).content(requirementBody))
                 .andExpect(status().isCreated());
 
         mockMvc.perform(get("/api/v1/test-cases/{id}/requirements", testCaseId))
@@ -63,14 +63,22 @@ class CriticalWorkflowsTest extends AbstractIntegrationTest {
         addTestCaseToPlan(planId, tc2.get("id").asText());
 
         String execResponse = mockMvc.perform(post("/api/v1/test-plans/{id}/executions", planId)
-                        .contentType("application/json").content("{}"))
+                        .contentType("application/json").characterEncoding(java.nio.charset.StandardCharsets.UTF_8).content("{}"))
                 .andExpect(status().isCreated())
-                .andReturn().getResponse().getContentAsString();
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
         JsonNode execution = objectMapper.readTree(execResponse);
 
         assertThat(execution.get("iterationNumber").asInt()).isEqualTo(1);
         assertThat(execution.get("testCases")).hasSize(2);
         assertThat(execution.get("status").asText()).isEqualTo("CREATED");
+
+        // The runner needs the pinned version's full content, not just id/title.
+        JsonNode firstTestCase = execution.get("testCases").get(0);
+        assertThat(firstTestCase.get("description").asText()).isEqualTo("desc");
+        assertThat(firstTestCase.get("preconditions").asText()).isEqualTo("none");
+        assertThat(firstTestCase.get("steps")).hasSize(1);
+        assertThat(firstTestCase.get("steps").get(0).get("action").asText()).isEqualTo("Schritt ausführen");
+        assertThat(firstTestCase.get("steps").get(0).get("expectedResult").asText()).isEqualTo("Erwartetes Ergebnis");
     }
 
     /** Workflow 3: Execution -> Result PASS setzen -> Result FAILED setzen -> Historie prüfen. */
@@ -85,7 +93,7 @@ class CriticalWorkflowsTest extends AbstractIntegrationTest {
         String resultId = execution.get("testCases").get(0).get("result").get("id").asText();
 
         mockMvc.perform(patch("/api/v1/executions/{eid}/results/{rid}", executionId, resultId)
-                        .contentType("application/json")
+                        .contentType("application/json").characterEncoding(java.nio.charset.StandardCharsets.UTF_8)
                         .content("""
                                 {"status":"PASSED","comment":"looks good","durationMs":1200}
                                 """))
@@ -93,17 +101,29 @@ class CriticalWorkflowsTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.status").value("PASSED"));
 
         mockMvc.perform(patch("/api/v1/executions/{eid}/results/{rid}", executionId, resultId)
-                        .contentType("application/json")
+                        .contentType("application/json").characterEncoding(java.nio.charset.StandardCharsets.UTF_8)
                         .content("""
-                                {"status":"FAILED","comment":"regression found","failureDetails":"AssertionError"}
+                                {"status":"FAILED","comment":"regression found","actualResult":"Error page shown",
+                                 "failureDetails":"AssertionError"}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("FAILED"))
+                .andExpect(jsonPath("$.actualResult").value("Error page shown"))
                 .andExpect(jsonPath("$.failureDetails").value("AssertionError"));
 
         // Execution transitions out of CREATED once a result was recorded.
         mockMvc.perform(get("/api/v1/executions/{id}", executionId))
                 .andExpect(jsonPath("$.status").value("RUNNING"));
+
+        // An existing (non-NOT_RUN) result stays editable -- e.g. correcting FAILED to BLOCKED.
+        mockMvc.perform(patch("/api/v1/executions/{eid}/results/{rid}", executionId, resultId)
+                        .contentType("application/json").characterEncoding(java.nio.charset.StandardCharsets.UTF_8)
+                        .content("""
+                                {"status":"BLOCKED","comment":"blocked by env outage"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("BLOCKED"))
+                .andExpect(jsonPath("$.comment").value("blocked by env outage"));
     }
 
     /**
@@ -130,7 +150,7 @@ class CriticalWorkflowsTest extends AbstractIntegrationTest {
                  "status":"ACTIVE","priority":"HIGH","tags":[]}
                 """;
         mockMvc.perform(put("/api/v1/test-cases/{id}", testCaseId)
-                        .contentType("application/json").content(updateBody))
+                        .contentType("application/json").characterEncoding(java.nio.charset.StandardCharsets.UTF_8).content(updateBody))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.currentVersion.versionNumber").value(2));
 
@@ -142,10 +162,22 @@ class CriticalWorkflowsTest extends AbstractIntegrationTest {
         // ... while the ORIGINAL execution's snapshot is untouched: still version 1.
         String reloaded = mockMvc.perform(get("/api/v1/executions/{id}", execution1.get("id").asText()))
                 .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString();
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
         JsonNode reloadedExecution1 = objectMapper.readTree(reloaded);
-        assertThat(reloadedExecution1.get("testCases").get(0).get("testCaseVersionNumber").asInt()).isEqualTo(1);
-        assertThat(reloadedExecution1.get("testCases").get(0).get("title").asText()).isEqualTo("Checkout Prozess");
+        JsonNode etc1 = reloadedExecution1.get("testCases").get(0);
+        assertThat(etc1.get("testCaseVersionNumber").asInt()).isEqualTo(1);
+        assertThat(etc1.get("title").asText()).isEqualTo("Checkout Prozess");
+        // The full pinned content (not just title/version) must also stay on v1 --
+        // the runner reads description/preconditions/steps straight from here.
+        assertThat(etc1.get("description").asText()).isEqualTo("desc");
+        assertThat(etc1.get("steps")).hasSize(1);
+        assertThat(etc1.get("steps").get(0).get("action").asText()).isEqualTo("Schritt ausführen");
+
+        JsonNode etc2 = execution2.get("testCases").get(0);
+        assertThat(etc2.get("title").asText()).isEqualTo("Checkout Prozess (neu)");
+        assertThat(etc2.get("description").asText()).isEqualTo("updated");
+        assertThat(etc2.get("steps")).hasSize(2);
+        assertThat(etc2.get("steps").get(1).get("action").asText()).isEqualTo("Bezahlen klicken");
     }
 
     /** Workflow 5: Report hochladen -> Execution zugeordnet -> Report erneut herunterladen. */
@@ -164,7 +196,7 @@ class CriticalWorkflowsTest extends AbstractIntegrationTest {
         String uploadResponse = mockMvc.perform(multipart("/api/v1/executions/{id}/reports", executionId)
                         .file(file))
                 .andExpect(status().isCreated())
-                .andReturn().getResponse().getContentAsString();
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
         JsonNode report = objectMapper.readTree(uploadResponse);
         String reportId = report.get("id").asText();
         assertThat(report.get("filename").asText()).isEqualTo("junit-report.xml");
@@ -184,7 +216,7 @@ class CriticalWorkflowsTest extends AbstractIntegrationTest {
 
     private String createProject(String key, String name) throws Exception {
         String body = objectMapper.writeValueAsString(java.util.Map.of("key", key, "name", name));
-        mockMvc.perform(post("/api/v1/projects").contentType("application/json").content(body))
+        mockMvc.perform(post("/api/v1/projects").contentType("application/json").characterEncoding(java.nio.charset.StandardCharsets.UTF_8).content(body))
                 .andExpect(status().isCreated());
         return key;
     }
@@ -195,33 +227,33 @@ class CriticalWorkflowsTest extends AbstractIntegrationTest {
                  "steps":[{"action":"Schritt ausführen","expectedResult":"Erwartetes Ergebnis"}]}
                 """.formatted(title);
         String response = mockMvc.perform(post("/api/v1/projects/{projectKey}/test-cases", projectKey)
-                        .contentType("application/json").content(body))
+                        .contentType("application/json").characterEncoding(java.nio.charset.StandardCharsets.UTF_8).content(body))
                 .andExpect(status().isCreated())
-                .andReturn().getResponse().getContentAsString();
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
         return objectMapper.readTree(response);
     }
 
     private JsonNode createTestPlan(String projectKey, String name) throws Exception {
         String body = objectMapper.writeValueAsString(java.util.Map.of("name", name));
         String response = mockMvc.perform(post("/api/v1/projects/{projectKey}/test-plans", projectKey)
-                        .contentType("application/json").content(body))
+                        .contentType("application/json").characterEncoding(java.nio.charset.StandardCharsets.UTF_8).content(body))
                 .andExpect(status().isCreated())
-                .andReturn().getResponse().getContentAsString();
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
         return objectMapper.readTree(response);
     }
 
     private void addTestCaseToPlan(String planId, String testCaseId) throws Exception {
         String body = objectMapper.writeValueAsString(java.util.Map.of("testCaseId", testCaseId));
         mockMvc.perform(post("/api/v1/test-plans/{id}/test-cases", planId)
-                        .contentType("application/json").content(body))
+                        .contentType("application/json").characterEncoding(java.nio.charset.StandardCharsets.UTF_8).content(body))
                 .andExpect(status().isCreated());
     }
 
     private JsonNode createExecutionFromPlan(String planId) throws Exception {
         String response = mockMvc.perform(post("/api/v1/test-plans/{id}/executions", planId)
-                        .contentType("application/json").content("{}"))
+                        .contentType("application/json").characterEncoding(java.nio.charset.StandardCharsets.UTF_8).content("{}"))
                 .andExpect(status().isCreated())
-                .andReturn().getResponse().getContentAsString();
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
         return objectMapper.readTree(response);
     }
 }
