@@ -22,13 +22,19 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 - [x] `README.md` Quick Start mit `docker compose up --build` verifiziert; Milestone-
       1-Workflow einmal über REST-API und einmal über die UI durchgespielt, inkl.
       Versions-/Snapshot-Stabilität und byte-genauem Report-Roundtrip
+- [x] `spring.jpa.open-in-view` sauber auf `false`: gezielte `@EntityGraph`-Queries
+      statt offener Session über den ganzen Request, siehe PROJECT_STATUS.md
+- [x] Execution View zu einem nutzbaren manuellen Test Runner ausgebaut (volle
+      Snapshot-Anzeige, PASSED/FAILED/BLOCKED/SKIPPED-Aktionen mit Editier-Dialog
+      statt `window.prompt`, Zusammenfassung/Fortschritt, Abschluss-/Abbruch-
+      Bestätigung mit NOT_RUN-Warnung), siehe PROJECT_STATUS.md
 
 ## Next
 
-- Repository-Lesepfade (`TestPlan`, `TestCase`, `Execution`) auf gezielte
-  `LEFT JOIN FETCH`/`@EntityGraph`-Queries umstellen, danach `spring.jpa.open-in-view`
-  wieder auf `false` setzen (aktuell `true` als Sofortfix gegen
-  LazyInitializationException, siehe PROJECT_STATUS.md)
+- `PATCH /executions/{id}/results/{resultId}` auf echtes partielles Merge-Verhalten
+  umstellen (aktuell Voll-Replace der veränderlichen Felder — `durationMs`/
+  `executor` gehen bei jedem Update ohne diese Felder verloren; im Runner-Formular
+  bisher bewusst nicht exponiert), siehe PROJECT_STATUS.md
 - Volltextsuche/Filter für Test Cases (Status, Priority, Tags)
 - Bulk-Requirement-Link-Abgleich ("existieren bereits ähnliche Test Cases zu Story X?")
 - Report-Importer für JUnit-XML (automatische Ergebnis-Interpretation)
