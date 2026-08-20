@@ -5,10 +5,16 @@ import com.testryn.common.error.NotFoundException;
 import com.testryn.project.domain.Project;
 import com.testryn.project.service.ProjectService;
 import com.testryn.testcase.domain.TestCase;
+import com.testryn.testcase.domain.TestCasePriority;
+import com.testryn.testcase.domain.TestCaseStatus;
 import com.testryn.testcase.domain.TestCaseVersion;
 import com.testryn.testcase.domain.TestStep;
 import com.testryn.testcase.repository.TestCaseRepository;
+import com.testryn.testcase.repository.TestCaseSpecifications;
 import com.testryn.testcase.repository.TestCaseVersionRepository;
+import org.hibernate.Hibernate;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -73,6 +79,31 @@ public class TestCaseService {
     public List<TestCase> findByProjectKey(String projectKey) {
         Project project = projectService.getByKey(projectKey);
         return testCaseRepository.findByProjectIdOrderByHumanIdAsc(project.getId());
+    }
+
+    /**
+     * Search/filter/paginate (ADR 0008) -- backs both the UI's Test Case table and
+     * an AI agent's near-duplicate check before creating a new test case (Abschnitt
+     * 10/11). Every filter is optional; {@code null}/blank means "don't filter on
+     * this field".
+     */
+    @Transactional(readOnly = true)
+    public Page<TestCase> search(String projectKey, String query, String tag, String requirementKey,
+                                  TestCaseStatus status, TestCasePriority priority, Pageable pageable) {
+        Project project = projectService.getByKey(projectKey);
+        var specification = TestCaseSpecifications.combine(
+                project.getId(), query, tag, requirementKey, status, priority);
+        Page<TestCase> page = testCaseRepository.findAll(specification, pageable);
+        // currentVersion.steps is deliberately not fetch-joined in the search query
+        // (would force in-memory pagination, ADR 0008) -- initialize it per page
+        // instead, bounded by page size rather than the whole result set.
+        page.forEach(tc -> {
+            if (tc.getCurrentVersion() != null) {
+                Hibernate.initialize(tc.getCurrentVersion().getSteps());
+            }
+            Hibernate.initialize(tc.getTags());
+        });
+        return page;
     }
 
     @Transactional(readOnly = true)
