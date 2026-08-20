@@ -6,13 +6,18 @@ spring:
     username: ${TESTRYN_DB_USERNAME:testryn}
     password: ${TESTRYN_DB_PASSWORD:testryn}
   jpa:
-    # Response DTOs are mapped in the web layer from entities returned by
-    # @Transactional service methods, so lazy associations (e.g. TestPlan.entries,
-    # TestCase.currentVersion) must still be loadable during that mapping.
-    # Disabling open-in-view without eager-fetch queries for every response
-    # produced LazyInitializationException on any endpoint returning a
-    # previously-persisted entity graph (e.g. GET/POST .../test-plans/{id}).
-    open-in-view: true
+    # Kept disabled deliberately (Spring Boot's OSIV default is true). Response DTOs
+    # are mapped in the web layer from entities returned by @Transactional service
+    # methods, so every read path that needs to be traversed by a response mapper
+    # (project/entries/currentVersion/steps/testCases/result, ...) is loaded via
+    # @EntityGraph on the relevant repository method, or explicitly initialized
+    # inside the transactional service method -- never relying on an open session
+    # reaching into the controller. See ExecutionService for the one case
+    # (Execution.testCases + testCases.testCaseVersion.steps are both Hibernate
+    # "bag" collections and cannot be fetch-joined together without
+    # MultipleBagFetchException) that needs an explicit Hibernate.initialize() call
+    # instead of a single @EntityGraph.
+    open-in-view: false
     hibernate:
       ddl-auto: validate
     properties:

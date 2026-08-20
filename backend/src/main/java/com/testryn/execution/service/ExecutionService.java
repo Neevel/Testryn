@@ -15,6 +15,7 @@ import com.testryn.testcase.service.TestCaseService;
 import com.testryn.testplan.domain.TestPlan;
 import com.testryn.testplan.domain.TestPlanEntry;
 import com.testryn.testplan.service.TestPlanService;
+import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,7 +62,9 @@ public class ExecutionService {
                 ? plan.getName() + " – Iteration " + iterationNumber
                 : name;
         Execution execution = Execution.createSnapshot(plan.getProject(), plan, iterationNumber, resolvedName, snapshot);
-        return executionRepository.save(execution);
+        execution = executionRepository.save(execution);
+        initializeStepsForResponse(execution);
+        return execution;
     }
 
     /** Creates an ad-hoc execution (no test plan) from an explicit set of test cases. */
@@ -78,24 +81,33 @@ public class ExecutionService {
         }
         int iterationNumber = executionRepository.countByProjectIdAndTestPlanIsNull(project.getId()) + 1;
         Execution execution = Execution.createSnapshot(project, null, iterationNumber, name, snapshot);
-        return executionRepository.save(execution);
+        execution = executionRepository.save(execution);
+        initializeStepsForResponse(execution);
+        return execution;
     }
 
     @Transactional(readOnly = true)
     public Execution getById(UUID id) {
-        return executionRepository.findById(id).orElseThrow(() -> NotFoundException.of("Execution", id));
+        Execution execution = executionRepository.findById(id)
+                .orElseThrow(() -> NotFoundException.of("Execution", id));
+        initializeStepsForResponse(execution);
+        return execution;
     }
 
     @Transactional(readOnly = true)
     public List<Execution> findByProjectKey(String projectKey) {
         Project project = projectService.getByKey(projectKey);
-        return executionRepository.findByProjectIdOrderByCreatedAtDesc(project.getId());
+        List<Execution> executions = executionRepository.findByProjectIdOrderByCreatedAtDesc(project.getId());
+        executions.forEach(this::initializeStepsForResponse);
+        return executions;
     }
 
     @Transactional(readOnly = true)
     public List<Execution> findByTestPlan(UUID testPlanId) {
         testPlanService.getById(testPlanId);
-        return executionRepository.findByTestPlanIdOrderByIterationNumberDesc(testPlanId);
+        List<Execution> executions = executionRepository.findByTestPlanIdOrderByIterationNumberDesc(testPlanId);
+        executions.forEach(this::initializeStepsForResponse);
+        return executions;
     }
 
     public ExecutionResult updateResult(UUID executionId, UUID resultId, ExecutionResultStatus status,
@@ -125,6 +137,21 @@ public class ExecutionService {
     private void requireVersioned(TestCase testCase) {
         if (testCase.getCurrentVersion() == null) {
             throw new BadRequestException("Test case " + testCase.getHumanId() + " has no version yet");
+        }
+    }
+
+    /**
+     * {@code Execution.testCases} and {@code TestCaseVersion.steps} are both
+     * Hibernate "bag" collections (unindexed {@code List}s), so they cannot be
+     * fetch-joined together in the same query (MultipleBagFetchException) --
+     * {@link com.testryn.execution.repository.ExecutionRepository} eager-fetches
+     * everything except the steps; this initializes that one remaining collection
+     * explicitly, still inside the current transaction, so the response mapper in
+     * the web layer can safely read it afterwards.
+     */
+    private void initializeStepsForResponse(Execution execution) {
+        for (var executionTestCase : execution.getTestCases()) {
+            Hibernate.initialize(executionTestCase.getTestCaseVersion().getSteps());
         }
     }
 }
