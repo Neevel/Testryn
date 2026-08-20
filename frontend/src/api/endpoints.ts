@@ -1,6 +1,7 @@
 import { api } from "./client";
 import type {
   Execution,
+  ExecutionResult,
   ExecutionResultStatus,
   Project,
   Report,
@@ -83,8 +84,15 @@ export const ExecutionsApi = {
   updateResult: (
     executionId: string,
     resultId: string,
-    input: { status: ExecutionResultStatus; comment?: string; durationMs?: number; executor?: string; failureDetails?: string },
-  ) => api.patch(`/api/v1/executions/${executionId}/results/${resultId}`, input),
+    input: {
+      status: ExecutionResultStatus;
+      comment?: string;
+      durationMs?: number;
+      executor?: string;
+      actualResult?: string;
+      failureDetails?: string;
+    },
+  ) => api.patch<ExecutionResult>(`/api/v1/executions/${executionId}/results/${resultId}`, input),
 };
 
 export const ReportsApi = {

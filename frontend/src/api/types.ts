@@ -82,6 +82,7 @@ export interface ExecutionResult {
   durationMs: number | null;
   executedAt: string | null;
   executor: string | null;
+  actualResult: string | null;
   failureDetails: string | null;
 }
 
@@ -90,6 +91,9 @@ export interface ExecutionTestCase {
   testCaseHumanId: string;
   testCaseVersionNumber: number;
   title: string;
+  description: string | null;
+  preconditions: string | null;
+  steps: Step[];
   position: number;
   result: ExecutionResult;
 }
