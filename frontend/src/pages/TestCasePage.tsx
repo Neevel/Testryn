@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { RequirementsApi, TestCasesApi } from "../api/endpoints";
-import type { RequirementLink, TestCase, TestCaseVersion } from "../api/types";
+import { JiraApi, RequirementsApi, TestCasesApi } from "../api/endpoints";
+import type { JiraIssuePreview, RequirementLink, TestCase, TestCaseVersion } from "../api/types";
 import { ErrorBanner, errorMessage } from "../components/ErrorBanner";
+import { EmptyState } from "../components/EmptyState";
+import { LoadingState } from "../components/LoadingState";
 import { StatusBadge } from "../components/StatusBadge";
 
 export function TestCasePage() {
@@ -30,7 +32,7 @@ export function TestCasePage() {
     return (
       <div>
         <ErrorBanner message={error} />
-        {!error && <p className="muted">Lade Test Case…</p>}
+        {!error && <LoadingState label="Loading test case…" />}
       </div>
     );
   }
@@ -40,18 +42,22 @@ export function TestCasePage() {
       <div className="breadcrumbs">
         <Link to={`/projects/${testCase.projectKey}`}>{testCase.projectKey}</Link> / {testCase.humanId}
       </div>
-      <div className="toolbar">
-        <h1 style={{ margin: 0 }}>
-          {testCase.humanId} — {testCase.currentVersion?.title}
-        </h1>
-        <button className="btn btn-secondary" onClick={() => setEditing((e) => !e)}>
-          {editing ? "Abbrechen" : "Bearbeiten"}
-        </button>
+      <div className="page-header">
+        <div className="title-group">
+          <h1>
+            {testCase.humanId} — {testCase.currentVersion?.title}
+          </h1>
+        </div>
+        <div className="actions">
+          <button className="btn btn-secondary" onClick={() => setEditing((e) => !e)}>
+            {editing ? "Cancel" : "Edit"}
+          </button>
+        </div>
       </div>
       <ErrorBanner message={error} />
 
       <div className="card">
-        <div style={{ display: "flex", gap: "1rem", marginBottom: "0.75rem" }}>
+        <div style={{ display: "flex", gap: "0.75rem", marginBottom: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
           <StatusBadge value={testCase.status} />
           <span className="badge">{testCase.priority}</span>
           <span className="muted">v{testCase.currentVersion?.versionNumber}</span>
@@ -61,9 +67,9 @@ export function TestCasePage() {
             </span>
           ))}
         </div>
-        {testCase.currentVersion?.description && <p>{testCase.currentVersion.description}</p>}
+        {testCase.currentVersion?.description && <p style={{ marginTop: 0 }}>{testCase.currentVersion.description}</p>}
         {testCase.currentVersion?.preconditions && (
-          <p>
+          <p style={{ marginBottom: 0 }}>
             <strong>Preconditions:</strong> {testCase.currentVersion.preconditions}
           </p>
         )}
@@ -80,49 +86,57 @@ export function TestCasePage() {
       ) : (
         <>
           <h2>Steps</h2>
-          <table>
-            <thead>
-              <tr>
-                <th style={{ width: "3rem" }}>#</th>
-                <th>Aktion</th>
-                <th>Erwartetes Ergebnis</th>
-              </tr>
-            </thead>
-            <tbody>
-              {testCase.currentVersion?.steps.map((step) => (
-                <tr key={step.order}>
-                  <td>{step.order}</td>
-                  <td>{step.action}</td>
-                  <td>{step.expectedResult}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {testCase.currentVersion?.steps.length ? (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ width: "3rem" }}>#</th>
+                    <th>Action</th>
+                    <th>Expected Result</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {testCase.currentVersion?.steps.map((step) => (
+                    <tr key={step.order}>
+                      <td>{step.order}</td>
+                      <td>{step.action}</td>
+                      <td>{step.expectedResult}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState title="No steps defined" />
+          )}
         </>
       )}
 
-      <h2>Requirement Links</h2>
+      <h2>Requirements</h2>
       <RequirementLinksSection testCaseId={testCase.id} links={links ?? []} onChanged={load} />
 
-      <h2>Versionshistorie</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Version</th>
-            <th>Titel</th>
-            <th>Erstellt</th>
-          </tr>
-        </thead>
-        <tbody>
-          {versions?.map((v) => (
-            <tr key={v.id}>
-              <td>v{v.versionNumber}</td>
-              <td>{v.title}</td>
-              <td>{new Date(v.createdAt).toLocaleString()}</td>
+      <h2>History</h2>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Version</th>
+              <th>Title</th>
+              <th>Created</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {versions?.map((v) => (
+              <tr key={v.id}>
+                <td>v{v.versionNumber}</td>
+                <td>{v.title}</td>
+                <td className="muted">{new Date(v.createdAt).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -168,11 +182,11 @@ function EditForm({ testCase, onSaved }: { testCase: TestCase; onSaved: () => vo
     <form className="card" onSubmit={submit}>
       <ErrorBanner message={error} />
       <div className="form-row">
-        <label>Titel</label>
+        <label>Title</label>
         <input value={title} onChange={(e) => setTitle(e.target.value)} required />
       </div>
       <div className="form-row">
-        <label>Beschreibung</label>
+        <label>Description</label>
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
       <div className="form-row">
@@ -182,28 +196,28 @@ function EditForm({ testCase, onSaved }: { testCase: TestCase; onSaved: () => vo
       <div className="form-row">
         <label>Status</label>
         <select value={status} onChange={(e) => setStatus(e.target.value as TestCase["status"])}>
-          <option value="DRAFT">DRAFT</option>
-          <option value="ACTIVE">ACTIVE</option>
-          <option value="DEPRECATED">DEPRECATED</option>
+          <option value="DRAFT">Draft</option>
+          <option value="ACTIVE">Active</option>
+          <option value="DEPRECATED">Deprecated</option>
         </select>
       </div>
       <div className="form-row">
         <label>Priority</label>
         <select value={priority} onChange={(e) => setPriority(e.target.value as TestCase["priority"])}>
-          <option value="LOW">LOW</option>
-          <option value="MEDIUM">MEDIUM</option>
-          <option value="HIGH">HIGH</option>
-          <option value="CRITICAL">CRITICAL</option>
+          <option value="LOW">Low</option>
+          <option value="MEDIUM">Medium</option>
+          <option value="HIGH">High</option>
+          <option value="CRITICAL">Critical</option>
         </select>
       </div>
       <div className="form-row">
-        <label>Tags (kommagetrennt)</label>
+        <label>Tags (comma-separated)</label>
         <input value={tags} onChange={(e) => setTags(e.target.value)} />
       </div>
       <div className="form-row">
         <label>Steps</label>
-        <p className="muted" style={{ margin: "0 0 0.5rem 0" }}>
-          Eine inhaltliche Änderung an Steps/Titel/Beschreibung/Preconditions erzeugt eine neue Version (Historie bleibt erhalten).
+        <p className="form-hint" style={{ margin: "0 0 0.5rem 0" }}>
+          Changing the title, description, preconditions or steps creates a new version -- history is preserved.
         </p>
         {steps.map((step, i) => (
           <div className="step-row" key={i}>
@@ -220,7 +234,7 @@ function EditForm({ testCase, onSaved }: { testCase: TestCase; onSaved: () => vo
             />
             <button
               type="button"
-              className="btn btn-secondary"
+              className="btn btn-secondary btn-sm"
               onClick={() => setSteps(steps.filter((_, idx) => idx !== i))}
               disabled={steps.length === 1}
             >
@@ -228,12 +242,12 @@ function EditForm({ testCase, onSaved }: { testCase: TestCase; onSaved: () => vo
             </button>
           </div>
         ))}
-        <button type="button" className="btn btn-secondary" onClick={() => setSteps([...steps, { action: "", expectedResult: "" }])}>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSteps([...steps, { action: "", expectedResult: "" }])}>
           + Step
         </button>
       </div>
       <button className="btn" type="submit" disabled={saving}>
-        Speichern
+        Save
       </button>
     </form>
   );
@@ -248,63 +262,254 @@ function RequirementLinksSection({
   links: RequirementLink[];
   onChanged: () => void;
 }) {
-  const [externalKey, setExternalKey] = useState("");
-  const [url, setUrl] = useState("");
-  const [summary, setSummary] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [removing, setRemoving] = useState<RequirementLink | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
+  async function confirmRemove() {
+    if (!removing) return;
+    setBusy(true);
     setError(null);
     try {
-      await RequirementsApi.create(testCaseId, { provider: "JIRA", externalKey, url: url || undefined, summary: summary || undefined });
-      setExternalKey("");
-      setUrl("");
-      setSummary("");
+      await RequirementsApi.remove(testCaseId, removing.id);
+      setRemoving(null);
       onChanged();
     } catch (err) {
       setError(errorMessage(err));
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   }
 
   return (
     <div>
       <ErrorBanner message={error} />
-      <table>
-        <thead>
-          <tr>
-            <th>Provider</th>
-            <th>Key</th>
-            <th>Summary</th>
-          </tr>
-        </thead>
-        <tbody>
-          {links.map((link) => (
-            <tr key={link.id}>
-              <td>{link.provider}</td>
-              <td>
-                <a href={link.url} target="_blank" rel="noreferrer">
-                  {link.externalKey}
-                </a>
-              </td>
-              <td>{link.summary}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {links.length === 0 && <p className="muted">Noch keine Requirement Links.</p>}
-      <form className="toolbar" onSubmit={submit}>
-        <input placeholder="Jira-Key (z. B. BIT-27)" value={externalKey} onChange={(e) => setExternalKey(e.target.value)} required />
-        <input placeholder="URL (optional, wird sonst per Jira-Anbindung ermittelt)" value={url} onChange={(e) => setUrl(e.target.value)} style={{ flex: 1 }} />
-        <input placeholder="Summary (optional)" value={summary} onChange={(e) => setSummary(e.target.value)} style={{ flex: 1 }} />
-        <button className="btn" type="submit" disabled={saving}>
-          Verknüpfen
+      {links.length === 0 && !showForm && (
+        <EmptyState title="No requirements linked yet">
+          Link this test case to a Jira issue to keep coverage traceable.
+          <div style={{ marginTop: "0.75rem" }}>
+            <button className="btn" onClick={() => setShowForm(true)}>
+              Link requirement
+            </button>
+          </div>
+        </EmptyState>
+      )}
+
+      {links.map((link) => (
+        <div className="requirement-card" key={link.id}>
+          <div>
+            <div>
+              <a className="key" href={link.url} target="_blank" rel="noreferrer">
+                {link.externalKey}
+              </a>
+            </div>
+            {link.summary && <div style={{ margin: "0.2rem 0" }}>{link.summary}</div>}
+            <div className="muted" style={{ fontSize: "0.8rem" }}>
+              {link.issueType && <span>{link.issueType}</span>}
+              {link.issueType && link.status && <span> · </span>}
+              {link.status && <span>{link.status}</span>}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: "0.5rem", flexShrink: 0 }}>
+            <a className="btn btn-secondary btn-sm" href={link.url} target="_blank" rel="noreferrer">
+              Open in Jira
+            </a>
+            <button className="btn btn-ghost btn-sm" onClick={() => setRemoving(link)}>
+              Remove
+            </button>
+          </div>
+        </div>
+      ))}
+
+      {links.length > 0 && !showForm && (
+        <button className="btn btn-secondary btn-sm" style={{ marginTop: "0.5rem" }} onClick={() => setShowForm(true)}>
+          + Link another requirement
+        </button>
+      )}
+
+      {showForm && <LinkRequirementForm testCaseId={testCaseId} onDone={() => setShowForm(false)} onChanged={onChanged} />}
+
+      {removing && (
+        <div className="modal-overlay" onClick={() => setRemoving(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Remove requirement link?</h2>
+            <p>
+              This only removes the link between this test case and <strong>{removing.externalKey}</strong> in Testryn.
+              The Jira issue itself is not affected.
+            </p>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setRemoving(null)} disabled={busy}>
+                Cancel
+              </button>
+              <button className="btn btn-danger" onClick={confirmRemove} disabled={busy}>
+                Remove link
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LinkRequirementForm({
+  testCaseId,
+  onDone,
+  onChanged,
+}: {
+  testCaseId: string;
+  onDone: () => void;
+  onChanged: () => void;
+}) {
+  const [key, setKey] = useState("");
+  const [preview, setPreview] = useState<JiraIssuePreview | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [linking, setLinking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showManualFallback, setShowManualFallback] = useState(false);
+  const [manualUrl, setManualUrl] = useState("");
+  const [manualSummary, setManualSummary] = useState("");
+
+  async function fetchPreview(e: React.FormEvent) {
+    e.preventDefault();
+    if (!key.trim()) return;
+    setLoadingPreview(true);
+    setError(null);
+    setPreview(null);
+    try {
+      const result = await JiraApi.previewIssue(key.trim());
+      setPreview(result);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setLoadingPreview(false);
+    }
+  }
+
+  async function confirmLink() {
+    if (!preview) return;
+    setLinking(true);
+    setError(null);
+    try {
+      await RequirementsApi.create(testCaseId, {
+        provider: "JIRA",
+        externalKey: preview.externalKey,
+        url: preview.url,
+        summary: preview.summary ?? undefined,
+      });
+      onChanged();
+      onDone();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setLinking(false);
+    }
+  }
+
+  async function submitManualLink(e: React.FormEvent) {
+    e.preventDefault();
+    if (!key.trim() || !manualUrl.trim()) return;
+    setLinking(true);
+    setError(null);
+    try {
+      await RequirementsApi.create(testCaseId, {
+        provider: "JIRA",
+        externalKey: key.trim(),
+        url: manualUrl.trim(),
+        summary: manualSummary.trim() || undefined,
+      });
+      onChanged();
+      onDone();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setLinking(false);
+    }
+  }
+
+  return (
+    <div className="card" style={{ marginTop: "0.75rem" }}>
+      <ErrorBanner message={error} />
+      <form onSubmit={fetchPreview} className="toolbar" style={{ marginBottom: preview ? "0.75rem" : 0 }}>
+        <input
+          placeholder="Jira key (e.g. BIT-27)"
+          value={key}
+          onChange={(e) => {
+            setKey(e.target.value);
+            setPreview(null);
+          }}
+          style={{ flex: 1 }}
+          autoFocus
+        />
+        <button className="btn btn-secondary" type="submit" disabled={loadingPreview || !key.trim()}>
+          {loadingPreview ? "Looking up…" : "Preview"}
+        </button>
+        <button type="button" className="btn btn-ghost" onClick={onDone}>
+          Cancel
         </button>
       </form>
+
+      {preview && (
+        <div className="jira-preview">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.75rem" }}>
+            <div>
+              <div className="key">{preview.externalKey}</div>
+              {preview.summary && <div style={{ margin: "0.3rem 0" }}>{preview.summary}</div>}
+              <div className="muted" style={{ fontSize: "0.8rem" }}>
+                {preview.issueType} {preview.issueType && preview.status && "· "} {preview.status}
+              </div>
+            </div>
+            <button className="btn" onClick={confirmLink} disabled={linking}>
+              {linking ? "Linking…" : "Link this issue"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!preview && !loadingPreview && key.trim() && !showManualFallback && (
+        <p className="form-hint">
+          Can't reach Jira right now?{" "}
+          <button type="button" className="btn-ghost btn btn-sm" onClick={() => setShowManualFallback(true)}>
+            Link "{key.trim()}" without a preview
+          </button>
+        </p>
+      )}
+
+      {showManualFallback && (
+        <form onSubmit={submitManualLink} style={{ marginTop: "0.5rem" }}>
+          <p className="form-hint" style={{ marginTop: 0 }}>
+            Enter the issue URL manually -- Testryn can't reach Jira to look it up right now.
+          </p>
+          <div className="form-row">
+            <label htmlFor="manual-url">Issue URL</label>
+            <input
+              id="manual-url"
+              placeholder="https://your-domain.atlassian.net/browse/BIT-27"
+              value={manualUrl}
+              onChange={(e) => setManualUrl(e.target.value)}
+              autoFocus
+              required
+            />
+          </div>
+          <div className="form-row">
+            <label htmlFor="manual-summary">Summary (optional)</label>
+            <input
+              id="manual-summary"
+              value={manualSummary}
+              onChange={(e) => setManualSummary(e.target.value)}
+            />
+          </div>
+          <div className="toolbar" style={{ marginBottom: 0 }}>
+            <button className="btn" type="submit" disabled={linking || !manualUrl.trim()}>
+              {linking ? "Linking…" : `Link "${key.trim()}"`}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={() => setShowManualFallback(false)} disabled={linking}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }
