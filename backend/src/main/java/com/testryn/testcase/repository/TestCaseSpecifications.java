@@ -58,6 +58,12 @@ public final class TestCaseSpecifications {
         return (root, query, cb) -> cb.equal(root.get("priority"), priority);
     }
 
+    /** Exact match, case-sensitive by design -- automationReference is a machine
+     * identifier (e.g. {@code auth.login.valid}), not free text (Abschnitt 10). */
+    public static Specification<TestCase> hasAutomationReference(String automationReference) {
+        return (root, query, cb) -> cb.equal(root.get("automationReference"), automationReference);
+    }
+
     /** Test case has at least one RequirementLink whose externalKey matches (case-insensitive). */
     public static Specification<TestCase> hasRequirementKey(String requirementKey) {
         return (root, query, cb) -> {
@@ -83,7 +89,7 @@ public final class TestCaseSpecifications {
 
     public static Specification<TestCase> combine(UUID projectId, String queryText, String tag,
                                                     String requirementKey, TestCaseStatus status,
-                                                    TestCasePriority priority) {
+                                                    TestCasePriority priority, String automationReference) {
         List<Specification<TestCase>> specs = new ArrayList<>();
         specs.add(hasProject(projectId));
         specs.add(fetchForResponse());
@@ -101,6 +107,9 @@ public final class TestCaseSpecifications {
         }
         if (priority != null) {
             specs.add(hasPriority(priority));
+        }
+        if (automationReference != null && !automationReference.isBlank()) {
+            specs.add(hasAutomationReference(automationReference));
         }
         Specification<TestCase> combined = Specification.where(null);
         for (Specification<TestCase> spec : specs) {

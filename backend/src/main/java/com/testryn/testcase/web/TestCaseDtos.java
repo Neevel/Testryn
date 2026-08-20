@@ -41,7 +41,8 @@ public final class TestCaseDtos {
             String preconditions,
             @NotNull TestCasePriority priority,
             Set<String> tags,
-            @NotEmpty @Valid List<StepRequest> steps
+            @NotEmpty @Valid List<StepRequest> steps,
+            String automationReference
     ) {
     }
 
@@ -52,7 +53,8 @@ public final class TestCaseDtos {
             @NotEmpty @Valid List<StepRequest> steps,
             @NotNull TestCaseStatus status,
             @NotNull TestCasePriority priority,
-            Set<String> tags
+            Set<String> tags,
+            String automationReference
     ) {
     }
 
@@ -85,6 +87,7 @@ public final class TestCaseDtos {
             TestCaseStatus status,
             TestCasePriority priority,
             Set<String> tags,
+            String automationReference,
             TestCaseVersionResponse currentVersion,
             Instant createdAt,
             Instant updatedAt
@@ -97,6 +100,7 @@ public final class TestCaseDtos {
                     testCase.getStatus(),
                     testCase.getPriority(),
                     testCase.getTags(),
+                    testCase.getAutomationReference(),
                     testCase.getCurrentVersion() == null ? null : TestCaseVersionResponse.from(testCase.getCurrentVersion()),
                     testCase.getCreatedAt(),
                     testCase.getUpdatedAt()

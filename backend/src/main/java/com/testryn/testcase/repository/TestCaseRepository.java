@@ -30,4 +30,9 @@ public interface TestCaseRepository extends JpaRepository<TestCase, UUID>, JpaSp
 
     @Query("select coalesce(max(tc.sequenceNumber), 0) from TestCase tc where tc.project.id = :projectId")
     int findMaxSequenceNumber(@Param("projectId") UUID projectId);
+
+    /** Backs the project-scoped uniqueness check for {@code automationReference} (Abschnitt 10). */
+    boolean existsByProject_IdAndAutomationReferenceAndIdNot(UUID projectId, String automationReference, UUID id);
+
+    boolean existsByProject_IdAndAutomationReference(UUID projectId, String automationReference);
 }

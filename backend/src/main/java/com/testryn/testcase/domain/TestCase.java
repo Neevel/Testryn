@@ -46,6 +46,16 @@ public class TestCase {
     @JoinColumn(name = "current_version_id")
     private TestCaseVersion currentVersion;
 
+    /**
+     * Stable, machine-friendly identifier an external automated test uses to report
+     * results back to this test case (e.g. {@code auth.login.valid}), independent of
+     * any specific test framework -- see Abschnitt 8 and ADR 0009. Optional, unique
+     * per project (enforced at both service and DB level), not part of the versioned
+     * content: changing it does not create a new {@link TestCaseVersion}.
+     */
+    @Column(name = "automation_reference", length = 200)
+    private String automationReference;
+
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "test_case_tags", joinColumns = @JoinColumn(name = "test_case_id"))
     @Column(name = "tag")
@@ -62,7 +72,7 @@ public class TestCase {
     }
 
     public static TestCase create(Project project, String humanId, int sequenceNumber,
-                                   TestCasePriority priority, Set<String> tags) {
+                                   TestCasePriority priority, Set<String> tags, String automationReference) {
         TestCase testCase = new TestCase();
         testCase.project = project;
         testCase.humanId = humanId;
@@ -70,6 +80,7 @@ public class TestCase {
         testCase.status = TestCaseStatus.DRAFT;
         testCase.priority = priority;
         testCase.tags = tags == null ? new HashSet<>() : new HashSet<>(tags);
+        testCase.automationReference = automationReference;
         Instant now = Instant.now();
         testCase.createdAt = now;
         testCase.updatedAt = now;
@@ -81,10 +92,12 @@ public class TestCase {
         this.updatedAt = Instant.now();
     }
 
-    public void updateMetadata(TestCaseStatus status, TestCasePriority priority, Set<String> tags) {
+    public void updateMetadata(TestCaseStatus status, TestCasePriority priority, Set<String> tags,
+                                String automationReference) {
         this.status = status;
         this.priority = priority;
         this.tags = tags == null ? new HashSet<>() : new HashSet<>(tags);
+        this.automationReference = automationReference;
         this.updatedAt = Instant.now();
     }
 
@@ -118,6 +131,10 @@ public class TestCase {
 
     public Set<String> getTags() {
         return tags;
+    }
+
+    public String getAutomationReference() {
+        return automationReference;
     }
 
     public Instant getCreatedAt() {

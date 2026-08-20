@@ -48,7 +48,7 @@ class RequirementLinkServiceTest {
     @BeforeEach
     void setUp() {
         Project project = Project.create("BITLESS", "Bitless", null);
-        testCase = TestCase.create(project, "BITLESS-TC-1", 1, TestCasePriority.MEDIUM, Set.of());
+        testCase = TestCase.create(project, "BITLESS-TC-1", 1, TestCasePriority.MEDIUM, Set.of(), null);
         lenient().when(requirementLinkRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 

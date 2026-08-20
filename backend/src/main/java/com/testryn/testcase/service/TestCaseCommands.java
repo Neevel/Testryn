@@ -20,7 +20,8 @@ public final class TestCaseCommands {
             String preconditions,
             TestCasePriority priority,
             Set<String> tags,
-            List<StepCommand> steps
+            List<StepCommand> steps,
+            String automationReference
     ) {
     }
 
@@ -38,7 +39,8 @@ public final class TestCaseCommands {
             List<StepCommand> steps,
             TestCaseStatus status,
             TestCasePriority priority,
-            Set<String> tags
+            Set<String> tags,
+            String automationReference
     ) {
     }
 }

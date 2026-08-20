@@ -1,6 +1,7 @@
 package com.testryn.testcase.service;
 
 import com.testryn.common.error.BadRequestException;
+import com.testryn.common.error.ConflictException;
 import com.testryn.common.error.NotFoundException;
 import com.testryn.project.domain.Project;
 import com.testryn.project.service.ProjectService;
@@ -23,6 +24,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 import static com.testryn.testcase.service.TestCaseCommands.CreateTestCaseCommand;
 import static com.testryn.testcase.service.TestCaseCommands.StepCommand;
@@ -31,6 +33,10 @@ import static com.testryn.testcase.service.TestCaseCommands.UpdateTestCaseComman
 @Service
 @Transactional
 public class TestCaseService {
+
+    /** Machine-friendly identifier only: letters/digits/dot/underscore/hyphen, e.g.
+     * {@code auth.login.valid} -- Abschnitt 8 ("maschinenfreundlich"). */
+    private static final Pattern AUTOMATION_REFERENCE_PATTERN = Pattern.compile("^[A-Za-z0-9_.\\-]{1,200}$");
 
     private final TestCaseRepository testCaseRepository;
     private final TestCaseVersionRepository testCaseVersionRepository;
@@ -51,8 +57,11 @@ public class TestCaseService {
         Project project = projectService.getByKey(projectKey);
         int nextSequence = testCaseRepository.findMaxSequenceNumber(project.getId()) + 1;
         String humanId = project.getKey() + "-TC-" + nextSequence;
+        String automationReference = normalizeAutomationReference(command.automationReference());
+        requireUniqueAutomationReference(project.getId(), automationReference, null);
 
-        TestCase testCase = TestCase.create(project, humanId, nextSequence, command.priority(), command.tags());
+        TestCase testCase = TestCase.create(project, humanId, nextSequence, command.priority(), command.tags(),
+                automationReference);
         testCase = testCaseRepository.save(testCase);
 
         TestCaseVersion version = TestCaseVersion.create(
@@ -89,10 +98,11 @@ public class TestCaseService {
      */
     @Transactional(readOnly = true)
     public Page<TestCase> search(String projectKey, String query, String tag, String requirementKey,
-                                  TestCaseStatus status, TestCasePriority priority, Pageable pageable) {
+                                  TestCaseStatus status, TestCasePriority priority, String automationReference,
+                                  Pageable pageable) {
         Project project = projectService.getByKey(projectKey);
         var specification = TestCaseSpecifications.combine(
-                project.getId(), query, tag, requirementKey, status, priority);
+                project.getId(), query, tag, requirementKey, status, priority, automationReference);
         Page<TestCase> page = testCaseRepository.findAll(specification, pageable);
         // currentVersion.steps is deliberately not fetch-joined in the search query
         // (would force in-memory pagination, ADR 0008) -- initialize it per page
@@ -130,8 +140,41 @@ public class TestCaseService {
             testCase.assignVersion(newVersion);
         }
 
-        testCase.updateMetadata(command.status(), command.priority(), command.tags());
+        String automationReference = normalizeAutomationReference(command.automationReference());
+        requireUniqueAutomationReference(testCase.getProject().getId(), automationReference, testCase.getId());
+        testCase.updateMetadata(command.status(), command.priority(), command.tags(), automationReference);
         return testCase;
+    }
+
+    /** {@code null}/blank means "not automated" -- trims otherwise, never returns
+     * blank. Rejects anything that isn't a machine-friendly token (Abschnitt 8). */
+    private String normalizeAutomationReference(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        if (!AUTOMATION_REFERENCE_PATTERN.matcher(trimmed).matches()) {
+            throw new BadRequestException(
+                    "automationReference must be a machine-friendly token (letters, digits, '.', '_', '-' only), "
+                            + "e.g. 'auth.login.valid': " + raw);
+        }
+        return trimmed;
+    }
+
+    /** Project-scoped uniqueness (Abschnitt 10): DB has the authoritative unique
+     * index too (defense in depth against races), this gives a clear 409 instead of
+     * a generic constraint-violation 409. */
+    private void requireUniqueAutomationReference(UUID projectId, String automationReference, UUID excludeTestCaseId) {
+        if (automationReference == null) {
+            return;
+        }
+        boolean exists = excludeTestCaseId == null
+                ? testCaseRepository.existsByProject_IdAndAutomationReference(projectId, automationReference)
+                : testCaseRepository.existsByProject_IdAndAutomationReferenceAndIdNot(projectId, automationReference, excludeTestCaseId);
+        if (exists) {
+            throw new ConflictException(
+                    "automationReference '" + automationReference + "' is already used by another test case in this project");
+        }
     }
 
     private boolean contentChanged(TestCaseVersion current, UpdateTestCaseCommand command) {

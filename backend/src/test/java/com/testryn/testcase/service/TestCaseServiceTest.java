@@ -55,7 +55,7 @@ class TestCaseServiceTest {
 
         var command = new CreateTestCaseCommand(
                 "Erfolgreiche Anmeldung", "desc", "preconditions", TestCasePriority.HIGH, Set.of("smoke"),
-                List.of(new StepCommand("Login-Seite öffnen", "Login-Formular wird angezeigt")));
+                List.of(new StepCommand("Login-Seite öffnen", "Login-Formular wird angezeigt")), null);
 
         TestCase created = service.create("BITLESS", command);
 
@@ -74,7 +74,7 @@ class TestCaseServiceTest {
         var command = new UpdateTestCaseCommand(
                 "Erfolgreiche Anmeldung", "desc", "preconditions",
                 List.of(new StepCommand("Login-Seite öffnen", "Login-Formular wird angezeigt")),
-                TestCaseStatus.ACTIVE, TestCasePriority.CRITICAL, Set.of("smoke", "regression"));
+                TestCaseStatus.ACTIVE, TestCasePriority.CRITICAL, Set.of("smoke", "regression"), null);
 
         TestCase updated = service.update(testCase.getId(), command);
 
@@ -95,7 +95,7 @@ class TestCaseServiceTest {
                 "Erfolgreiche Anmeldung (überarbeitet)", "neue desc", "preconditions",
                 List.of(new StepCommand("Login-Seite öffnen", "Login-Formular wird angezeigt"),
                         new StepCommand("Zugangsdaten eingeben", "Felder akzeptieren Eingabe")),
-                TestCaseStatus.ACTIVE, TestCasePriority.HIGH, Set.of("smoke"));
+                TestCaseStatus.ACTIVE, TestCasePriority.HIGH, Set.of("smoke"), null);
 
         TestCase updated = service.update(testCase.getId(), command);
 
@@ -114,7 +114,7 @@ class TestCaseServiceTest {
         when(testCaseRepository.findMaxSequenceNumber(any())).thenReturn(0);
         var command = new CreateTestCaseCommand(
                 "Erfolgreiche Anmeldung", "desc", "preconditions", TestCasePriority.HIGH, Set.of("smoke"),
-                List.of(new StepCommand("Login-Seite öffnen", "Login-Formular wird angezeigt")));
+                List.of(new StepCommand("Login-Seite öffnen", "Login-Formular wird angezeigt")), null);
         return service.create("BITLESS", command);
     }
 }

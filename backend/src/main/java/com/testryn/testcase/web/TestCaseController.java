@@ -51,7 +51,7 @@ public class TestCaseController {
                                                      @Valid @RequestBody CreateTestCaseRequest request) {
         var command = new TestCaseCommands.CreateTestCaseCommand(
                 request.title(), request.description(), request.preconditions(),
-                request.priority(), request.tags(), toStepCommands(request.steps()));
+                request.priority(), request.tags(), toStepCommands(request.steps()), request.automationReference());
         TestCase created = testCaseService.create(projectKey, command);
         TestCaseResponse body = TestCaseResponse.from(created);
         return ResponseEntity.created(URI.create("/api/v1/test-cases/" + created.getId())).body(body);
@@ -62,9 +62,12 @@ public class TestCaseController {
             description = """
                     All filters are optional and combine with AND: `query` matches the human-readable ID or
                     current title (case-insensitive substring), `tag` an exact tag, `requirementKey` an exact
-                    (case-insensitive) linked Jira/requirement key, `status`/`priority` exact match. Useful for
-                    an AI agent checking for near-duplicate test cases before creating a new one, e.g.
-                    `?query=login`. Response is a page envelope, not a bare array -- see PageResponse.
+                    (case-insensitive) linked Jira/requirement key, `status`/`priority` exact match,
+                    `automationReference` an exact (case-sensitive) match -- no fuzzy matching for it, since it
+                    is a machine identifier, not free text. Useful for an AI/CI agent checking for
+                    near-duplicate test cases before creating a new one (`?query=login`) or resolving which
+                    test case an automated test result belongs to (`?automationReference=auth.login.valid`).
+                    Response is a page envelope, not a bare array -- see PageResponse.
                     """
     )
     @GetMapping("/api/v1/projects/{projectKey}/test-cases")
@@ -75,12 +78,14 @@ public class TestCaseController {
             @RequestParam(required = false) String requirementKey,
             @RequestParam(required = false) TestCaseStatus status,
             @RequestParam(required = false) TestCasePriority priority,
+            @Parameter(description = "Exact, case-sensitive match against automationReference") @RequestParam(required = false) String automationReference,
             @Parameter(description = "0-based page index") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Page size, max 100") @RequestParam(defaultValue = "20") int size) {
         int safeSize = Math.min(Math.max(size, 1), 100);
         int safePage = Math.max(page, 0);
         var pageable = PageRequest.of(safePage, safeSize, Sort.by("humanId").ascending());
-        Page<TestCase> result = testCaseService.search(projectKey, query, tag, requirementKey, status, priority, pageable);
+        Page<TestCase> result = testCaseService.search(
+                projectKey, query, tag, requirementKey, status, priority, automationReference, pageable);
         return PageResponse.from(result, result.getContent().stream().map(TestCaseResponse::from).toList());
     }
 
@@ -93,7 +98,8 @@ public class TestCaseController {
     public TestCaseResponse update(@PathVariable UUID id, @Valid @RequestBody UpdateTestCaseRequest request) {
         var command = new TestCaseCommands.UpdateTestCaseCommand(
                 request.title(), request.description(), request.preconditions(),
-                toStepCommands(request.steps()), request.status(), request.priority(), request.tags());
+                toStepCommands(request.steps()), request.status(), request.priority(), request.tags(),
+                request.automationReference());
         return TestCaseResponse.from(testCaseService.update(id, command));
     }
 
