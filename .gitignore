@@ -19,6 +19,9 @@ frontend/vite.config.d.ts
 # Local data volumes
 data/
 
+# Claude Code harness state
+.claude/
+
 # IDE
 .idea/
 *.iml

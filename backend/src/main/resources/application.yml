@@ -6,7 +6,13 @@ spring:
     username: ${TESTRYN_DB_USERNAME:testryn}
     password: ${TESTRYN_DB_PASSWORD:testryn}
   jpa:
-    open-in-view: false
+    # Response DTOs are mapped in the web layer from entities returned by
+    # @Transactional service methods, so lazy associations (e.g. TestPlan.entries,
+    # TestCase.currentVersion) must still be loadable during that mapping.
+    # Disabling open-in-view without eager-fetch queries for every response
+    # produced LazyInitializationException on any endpoint returning a
+    # previously-persisted entity graph (e.g. GET/POST .../test-plans/{id}).
+    open-in-view: true
     hibernate:
       ddl-auto: validate
     properties:
