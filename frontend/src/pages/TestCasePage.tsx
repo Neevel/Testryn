@@ -44,9 +44,10 @@ export function TestCasePage() {
       </div>
       <div className="page-header">
         <div className="title-group">
-          <h1>
-            {testCase.humanId} — {testCase.currentVersion?.title}
-          </h1>
+          <div className="testcase-heading">
+            <span className="technical-id">{testCase.humanId}</span>
+            <h1>{testCase.currentVersion?.title}</h1>
+          </div>
         </div>
         <div className="actions">
           <button className="btn btn-secondary" onClick={() => setEditing((e) => !e)}>
@@ -56,7 +57,7 @@ export function TestCasePage() {
       </div>
       <ErrorBanner message={error} />
 
-      <div className="card">
+      <div className="card testcase-overview">
         <div style={{ display: "flex", gap: "0.75rem", marginBottom: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
           <StatusBadge value={testCase.status} />
           <span className="badge">{testCase.priority}</span>
@@ -92,25 +93,14 @@ export function TestCasePage() {
         <>
           <h2>Steps</h2>
           {testCase.currentVersion?.steps.length ? (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th style={{ width: "3rem" }}>#</th>
-                    <th>Action</th>
-                    <th>Expected Result</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {testCase.currentVersion?.steps.map((step) => (
-                    <tr key={step.order}>
-                      <td>{step.order}</td>
-                      <td>{step.action}</td>
-                      <td>{step.expectedResult}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="test-steps">
+              {testCase.currentVersion.steps.map((step) => (
+                <div className="test-step" key={step.order}>
+                  <span className="step-number">{String(step.order).padStart(2, "0")}</span>
+                  <div className="step-content"><span className="step-label">Action</span><div>{step.action}</div></div>
+                  <div className="step-content step-expected"><span className="step-label">Expected result</span><div>{step.expectedResult}</div></div>
+                </div>
+              ))}
             </div>
           ) : (
             <EmptyState title="No steps defined" />

@@ -3,10 +3,10 @@ import { Link } from "react-router-dom";
 import { ExecutionsApi, ProjectsApi, TestCasesApi } from "../api/endpoints";
 import type { Execution, Project } from "../api/types";
 import { ErrorBanner, errorMessage } from "../components/ErrorBanner";
-import { EmptyState } from "../components/EmptyState";
 import { LoadingState } from "../components/LoadingState";
 import { StatusBadge } from "../components/StatusBadge";
 import { summarize } from "./executionSummary";
+import { Icon } from "../components/Icon";
 
 interface ProjectSummary {
   project: Project;
@@ -81,12 +81,17 @@ export function DashboardPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <div className="title-group">
-          <h1>Dashboard</h1>
+      <div className="page-header dashboard-header">
+        <div>
+          <div className="eyebrow">Quality workspace</div>
+          <div className="title-group">
+            <h1>Quality at a glance</h1>
+          </div>
+          <p className="page-subtitle">Trace requirements, tests and results in one focused workspace.</p>
         </div>
         <div className="actions">
           <button className="btn" onClick={() => setShowNewProjectForm((s) => !s)}>
+            {!showNewProjectForm && <Icon name="plus" />}
             {showNewProjectForm ? "Cancel" : "New project"}
           </button>
         </div>
@@ -114,19 +119,20 @@ export function DashboardPage() {
       {summaries === null && !error && <LoadingState label="Loading projects…" />}
 
       {summaries?.length === 0 && (
-        <EmptyState title="No projects yet">
-          Create your first project to start building test coverage.
-          <div style={{ marginTop: "0.75rem" }}>
-            <button className="btn" onClick={() => setShowNewProjectForm(true)}>
-              Create project
-            </button>
+        <div className="welcome-panel">
+          <div className="welcome-copy">
+            <span className="eyebrow">Welcome to Testryn</span>
+            <h2>Build a quality system your team can trust.</h2>
+            <p>Connect requirements to versioned test cases, reusable plans and durable execution results.</p>
+            <button className="btn" onClick={() => setShowNewProjectForm(true)}><Icon name="plus" /> Create your first project</button>
           </div>
-        </EmptyState>
+          <TraceIllustration />
+        </div>
       )}
 
       {summaries && summaries.length > 0 && (
         <>
-          <div className="card summary-bar" style={{ marginBottom: "1.5rem" }}>
+          <div className="metric-grid">
             <div className="stat">
               <span className="value">{summaries.length}</span>
               <span className="label">Projects</span>
@@ -190,7 +196,8 @@ export function DashboardPage() {
             {summaries.map(({ project, activeTestCaseCount, executions }) => {
               const latest = [...executions].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 3);
               return (
-                <div className="card" key={project.id}>
+                <div className="card project-card" key={project.id}>
+                  <div className="project-card-accent" />
                   <h3 style={{ marginBottom: "0.2rem" }}>
                     <Link to={`/projects/${project.key}`}>{project.name}</Link>
                   </h3>
@@ -211,12 +218,27 @@ export function DashboardPage() {
                       <StatusBadge value={execution.status} />
                     </div>
                   ))}
+                  <Link className="project-card-link" to={`/projects/${project.key}`}>Open project <Icon name="arrow" /></Link>
                 </div>
               );
             })}
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function TraceIllustration() {
+  return (
+    <div className="trace-illustration" aria-hidden="true">
+      <div className="trace-orbit trace-orbit-one" />
+      <div className="trace-orbit trace-orbit-two" />
+      <div className="trace-path" />
+      <span className="trace-point p1"><i>R</i></span>
+      <span className="trace-point p2"><i>T</i></span>
+      <span className="trace-point p3"><i>E</i></span>
+      <span className="trace-check">✓</span>
     </div>
   );
 }

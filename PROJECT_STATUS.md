@@ -354,6 +354,31 @@ Docker-Compose-Stack.
   sicherheitsrelevant, kein Codefix in diesem Block, bei Bedarf später auf
   `UUID`-basierte Testschlüssel umstellen.
 
+## Premium UI, Branding & Visual Design (21.08.2026)
+
+- Eigenständige Testryn-Identität mit Trace-/Checkpoint-Signet, Wordmark, App-Icon und
+  SVG-Favicon eingeführt; alle Assets sind repo-nativ und skalierbar.
+- Zentrales visuelles System um vollständige Surface-, Text-, Border-, Status-,
+  Spacing-, Radius-, Shadow- und Typografie-Tokens erweitert. Systemgesteuerter Dark
+  Mode, sichtbare Fokuszustände und `prefers-reduced-motion` sind berücksichtigt.
+- App-Shell mit gruppierter, iconbasierter Navigation, klarer aktiver Auswahl,
+  Produktunterzeile und responsivem horizontalem Layout für kleinere Fenster neu
+  gestaltet.
+- Dashboard mit echter Informationshierarchie, datengetriebenem KPI-Raster,
+  hochwertigeren Projektkarten und einem gebrandeten Welcome-/Traceability-Visual
+  überarbeitet. Keine erfundenen Daten oder funktionslosen Aktionen ergänzt.
+- Test-Case-Detail trennt technische ID und Titel deutlich; Testschritte werden als
+  fokussierte Action-/Expected-Result-Blöcke statt als generische Tabelle dargestellt.
+- Tabellen, Formulare, Buttons, Status-Badges, Requirements, Execution Runner,
+  Progress, Modals, Loading- und Empty-States wurden über gemeinsame Styles visuell
+  konsolidiert. Alle bestehenden API- und Navigationspfade blieben unverändert.
+- Browser-QA des frischen Production-Builds bei 1440×1000 und 800×1000 bestätigt
+  Alignment, responsive Navigation, Typografie und fehlerfreies Rendering der App-Shell.
+  Datenabhängige Unterseiten waren im isolierten Headless-Profil ohne API-Token nicht
+  vollständig erreichbar.
+- Verifikation: `frontend/npm run build` erfolgreich; `frontend/npm test` 5/5 grün;
+  `backend/mvn test` 107/107 grün.
+
 ## Nächster sinnvoller Schritt
 
 BACKLOG.md → Next: **JUnit-XML-Import-Adapter** ist der empfohlene nächste
