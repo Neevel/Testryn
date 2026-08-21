@@ -3,7 +3,23 @@
 Strukturierter Produktbacklog. `Now` = aktueller Meilenstein, `Next` = danach
 sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 
-## Now (API & Service Security, siehe PROJECT_STATUS.md)
+## Now (JUnit XML Import & CI Adapter, siehe PROJECT_STATUS.md)
+
+- [x] `JUnitXmlResultBatchReader` — Surefire/Failsafe-XML (`<testsuite>`/
+      `<testsuites>`), gegen XXE gehärtet, PASSED/FAILED/SKIPPED-Mapping,
+      `BigDecimal`-Duration-Konvertierung
+- [x] `JUnitReportImporter` — Multi-File/Verzeichnis-Auflösung (nicht-rekursiv),
+      Cross-File-Duplikat-Erkennung
+- [x] Subcommand `publish-junit` (`--base-url`, `--execution-id`, `--results`,
+      `--dry-run`) neben dem unveränderten `publish` (JSON)
+- [x] `automationReference`-Konvention `classname#name`, ADR 0013 (inkl. Erweiterung
+      des Zeichensatzes aus ADR 0009 um `#`)
+- [x] Sichere Ende-zu-Ende-Verifikation mit echtem Maven/JUnit-Projekt, echtem
+      `mvn test`, echten Surefire-XML-Dateien, echtem authentifiziertem Bulk-Publish
+- [x] `docs/ci-integration.md`/`tools/testryn-publisher/README.md` um JUnit-XML,
+      Maven-Beispiel, Jenkins-Beispiel, GitHub-Actions-Beispiel erweitert
+
+## Now (zuvor: API & Service Security, siehe PROJECT_STATUS.md)
 
 - [x] Service-Token-Authentifizierung für die gesamte REST-API (Bearer Token,
       stateless, Spring Security), ADR 0012
@@ -25,13 +41,22 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 
 ## Next
 
+- **Jira Forge App / Issue Panel** — empfohlener nächster *fachlicher* Block: die
+  REST-API liefert bereits alles Nötige (Requirement-Links,
+  Execution-Status/-Progress-Endpoints für PASS/FAIL/Coverage), eine Forge-App
+  bräuchte keinen Architekturumbau, nur die App selbst (inkl. eines eigenen Service
+  Tokens für ihr Backend, ADR 0012).
 - **Human User Authentication** (Login, Sessions) — bewusst nicht in diesem Block
   (Abschnitt 9/36); Service Tokens sind explizit Maschinen-Credentials, keine
   Personen-Identität. Das Frontend braucht bis dahin weiterhin die
   Dev-Token-Übergangslösung aus diesem Block.
-- **JUnit-XML-Import-Adapter** — empfohlener nächster *fachlicher* Block
-  (Abschnitt 40): Architektur bereits vorbereitet (`ResultBatchReader` im Publisher,
-  ADR 0011), noch nicht gebaut.
+- **Weitere Report-Importer** (Playwright, Cypress, Allure, NUnit, pytest) — dieselbe
+  `ResultBatchReader`-Schnittstelle wie beim jetzt implementierten JUnit-XML-Adapter,
+  jeweils ein kleinerer, eigenständiger Block.
+- **Execution-State-Guard**: Bulk-/Einzel-Result-Endpoint lehnen aktuell keine
+  Schreibversuche auf eine `COMPLETED`/`ABORTED`-Execution ab — beim JUnit-XML-Block
+  entdeckt und bewusst nicht dort mitgelöst (keine Domain-Regel client-seitig
+  duplizieren, die serverseitig noch gar nicht existiert).
 - **API-Rate-Limiting** — noch nicht nötig, aber jetzt, wo Requests einem Token
   zugeordnet sind, technisch einfacher anzuschließen als vorher.
 - **Secret Rotation** für Service Tokens (z. B. "neuen Token erzeugen, alten erst
@@ -66,9 +91,9 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 
 - **CI-Plugins** (fertige GitHub-Action / GitLab-CI-Component, die den Publisher
   kapselt) — erst sinnvoll, wenn reale Pipeline-Nutzung Muster zeigt.
-- **Report-Importer für JUnit-XML, TestNG, Playwright, Cypress, Allure**
-  (automatische Ergebnis-Interpretation) — Architektur vorbereitet (siehe Next:
-  JUnit-XML-Adapter zuerst), aber alle Parser bewusst außerhalb dieses Blocks.
+- **Report-Importer für TestNG, Playwright, Cypress, Allure, NUnit, pytest**
+  (automatische Ergebnis-Interpretation) — JUnit-XML ist implementiert (siehe „Now"),
+  Architektur (`ResultBatchReader`) für die übrigen Formate vorbereitet, siehe Next.
 - **Jira Forge App** — die REST-API liefert bereits alles Nötige
   (`GET /test-cases/{id}/requirements`, `GET /projects/{key}/requirements`,
   Execution-Status/Progress-Endpoints für PASS/FAIL/Coverage) — eine spätere

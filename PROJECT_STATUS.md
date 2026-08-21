@@ -7,18 +7,141 @@ Stand: 2026-08-21
 
 ## Aktueller Meilenstein
 
-**API & Service Security implementiert** (ADR 0012). Die REST-API war bis zu diesem
-Block vollständig offen — das zuvor identifizierte größte technische Risiko. Jetzt:
-Service-Token-Authentifizierung (Bearer Token, SHA-256-Hash, drei Scopes
-`read`/`write`/`admin`), Token-Verwaltungs-API, Bootstrap-Mechanismus, CI-Publisher
-vollständig auf Auth verifiziert, Frontend mit einer bewusst minimalen,
-ehrlich als solche gekennzeichneten Dev-Token-Übergangslösung (kein echtes Login —
-das bleibt ein separater, noch nicht begonnener Block). Details siehe „API & Service
-Security" unten.
+**JUnit XML Publisher Adapter: implementiert und live verifiziert.**
+`testryn-publisher publish-junit` liest Maven-Surefire-/Failsafe-XML direkt aus
+`target/surefire-reports` (Multi-File, sichere XML-Verarbeitung gegen XXE,
+`classname#name`-Automation-Mapping nach ADR 0013) und veröffentlicht sie über
+denselben authentifizierten Bulk-Result-Update-Pfad wie der bestehende
+JSON-`publish`-Workflow — unverändert daneben nutzbar. Live gegen den echten,
+laufenden Stack verifiziert: ein reales Maven/JUnit-5-Fixture-Projekt, ein echter
+`mvn test`-Lauf, die daraus resultierenden echten Surefire-XML-Dateien, vier reale
+Testryn-Test-Cases und ein echter, authentifizierter Bulk-Publish. Details siehe
+„JUnit XML Import & CI Adapter" unten.
 
-Die vorherigen Blöcke (Jira Cloud live-verifiziert; Bulk-Result-Update,
-`automationReference`, CI-Publisher) sind unverändert gültig — siehe Git-Log und die
-Abschnitte weiter unten in dieser Datei für Details.
+Die vorherigen Blöcke (API & Service Security; Jira Cloud live-verifiziert;
+Bulk-Result-Update, `automationReference`, CI-Publisher) sind unverändert gültig —
+siehe Git-Log und die Abschnitte weiter unten in dieser Datei für Details.
+
+## JUnit XML Import & CI Adapter (ADR 0013)
+
+**Publisher** (`tools/testryn-publisher/`):
+
+- Neuer `ResultBatchReader`: `JUnitXmlResultBatchReader` — liest genau eine
+  JUnit-kompatible XML-Datei (bare `<testsuite>` oder `<testsuites>`-Wrapper,
+  identisches Schema für Surefire **und** Failsafe, keine Sonderbehandlung nötig).
+  `javax.xml.parsers.DocumentBuilderFactory` gegen XXE gehärtet (Doctype verboten,
+  externe Entities/DTDs deaktiviert, `ACCESS_EXTERNAL_DTD`/`_SCHEMA` leer, eigener
+  `EntityResolver`, der jede externe Auflösung verwirft) — keine neue Abhängigkeit,
+  alles JDK-Bordmittel. Statusmapping: kein `<failure>`/`<error>`/`<skipped>` →
+  `PASSED`; `<failure>`/`<error>` → `FAILED` (`message` → `actualResult`, `type` +
+  Stacktrace/Body → `failureDetails`); `<skipped>` → `SKIPPED`. `BLOCKED` wird nie
+  automatisch erzeugt. Duration über `BigDecimal` (nicht `double`) konvertiert — keine
+  Rundungsdrift bei `time="1.273"` → 1273 ms. `<system-out>`/`<system-err>` werden nie
+  gelesen oder weitergereicht.
+- Neuer Orchestrator: `JUnitReportImporter` — löst `--results`-Eingaben (Datei(en)
+  und/oder Verzeichnis(se), Verzeichnisse nicht rekursiv) auf, parst jede Datei
+  einzeln, führt zu einem kombinierten Batch zusammen. Cross-File-Duplikate derselben
+  `automationReference` werden mit einer Fehlermeldung abgelehnt, die jede betroffene
+  Datei nennt — bewusste Entscheidung nach Analyse des echten
+  Surefire-Rerun-XML-Formats (`<rerunFailure>`/`<flakyFailure>` verschachtelt sich
+  *innerhalb* eines `<testcase>`, erzeugt also nie echte Duplikate auf Element-Ebene;
+  ein tatsächliches Duplikat deutet auf ein reales Problem hin, z. B. ein
+  wiederverwendetes `target/`-Verzeichnis).
+- Neuer Subcommand `publish-junit` (`PublisherCli.parseJUnit`,
+  `PublisherMain.runJUnitPublish`) neben dem unveränderten `publish` (JSON):
+  `--base-url`, `--execution-id` (**erforderlich** — JUnit-XML trägt nie eine
+  Execution-ID), `--results` (mehrfach angebbar **und** greedy-multi-value pro
+  Vorkommen, damit sowohl ein Verzeichnis als auch ein vom Shell bereits expandiertes
+  Glob-Pattern funktionieren), `--dry-run` (parst alles, druckt eine Vorschau mit
+  Datei-/Test-/Status-Zählungen und jeder aufgelösten `automationReference`, sendet
+  nichts).
+- Unbekannte `automationReference`: **keine** Client-seitige Vorab-Prüfung — dieselbe
+  atomare Bulk-API (ADR 0010) lehnt die gesamte Anfrage ab und listet jede nicht
+  auflösbare Referenz; nichts wird je teilweise veröffentlicht. Dieselbe
+  `TestrynApiClient`/`PublishOutcome`-Pipeline wie der bestehende JSON-Workflow — kein
+  paralleler Code-Pfad, keine duplizierte Domain-Logik.
+- `TestrynApiClient` selbst: **keine Änderung nötig** — bestätigt, dass
+  `ResultBatchReader` (ADR 0011) tatsächlich die richtige Erweiterungsstelle war.
+
+**Backend** — eine gezielte, dokumentierte Änderung: `TestCaseService`s
+`automationReference`-Zeichensatz um `#` erweitert (ADR 0009 → ADR 0013), damit die
+`classname#name`-Konvention überhaupt persistierbar ist. Live am echten Stack
+entdeckt: der erste Versuch, `com.example.PublisherDemoTest#passedTest` über die API
+anzulegen, schlug mit `400 Bad Request` fehl, bevor diese Änderung vorgenommen wurde.
+
+**automationReference-Konvention** (ADR 0013): `classname + "#" + name`, wörtlich aus
+dem XML, z. B. `com.example.LoginTest#successfulLogin` — nicht der bloße
+Methodenname (kollidiert projektweit), `#` statt `.` als Trenner (ein weiterer Punkt
+wäre nicht vom Package-Pfad unterscheidbar). Für parametrisierte/dynamische Tests
+bewusst **keine** Rückübersetzung generierter Display-Namen — was im XML steht, wird
+eins zu eins übernommen; dokumentierte, akzeptierte Grenze statt riskanter Heuristik.
+Kein separates YAML-Mapping-Subsystem gebaut (erwogen, aber für den Normalfall nicht
+nötig).
+
+**Tests:**
+
+- `JUnitXmlResultBatchReaderTest` (20): bare `<testsuite>`, `<testsuites>`-Wrapper,
+  PASSED/FAILED/ERROR/SKIPPED-Mapping, Duration-Präzision, Failure-Message/Type/
+  Stacktrace, classname/name-Mapping inkl. fehlendem `classname`, fehlender
+  `name`+`classname`, malformed XML, leere Eingabe, falsches Root-Element, Binärdaten,
+  drei verschiedene XXE-/Doctype-Angriffsversuche (jeweils abgelehnt).
+- `JUnitReportImporterTest` (9): einzelne Datei, mehrere Dateien, Verzeichnis
+  (nicht-rekursiv bestätigt), Datei+Verzeichnis gemischt, Cross-File-Duplikat,
+  leeres Verzeichnis, nicht existierender Pfad, leere Eingabeliste,
+  Datei-spezifische Fehlermeldung bei Parse-Fehler.
+- `PublisherCliTest` (+8): `publish-junit`-Flag-Parsing, `--dry-run`, wiederholtes
+  `--results`, Shell-Glob-Simulation, fehlende Pflichtfelder.
+- `PublisherMainTest` (+7, `@Nested PublishJunit`): unbekannter Command, Usage-Fehler,
+  nicht existierender Pfad ohne rohen Stacktrace, Dry-Run-Ausgabeformat inkl.
+  Token-Abwesenheit, Cross-File-Duplikat → Exit 2, leerer Report → Exit 1.
+- `AutomationReferenceTest` (Backend, +1): akzeptiert die `classname#name`-Konvention.
+- Bestehende Tests (JSON-`publish`-Workflow, `TestrynApiClient` inkl. 401/403/
+  Token-nie-in-Fehlermeldung) unverändert grün — bestätigt keine Regression.
+
+**`cd tools/testryn-publisher && mvn test`: 82/82 grün.**
+**`cd backend && mvn test`: 108/111 grün** (3 vorbestehende, umgebungsbedingte
+Fehlschläge in `RequirementWorkflowTest`, nicht durch diesen Block verursacht —
+siehe „Bekannte Einschränkungen" unten).
+
+### Echte Ende-zu-Ende-Verifikation (nicht nur handgeschriebenes XML)
+
+- Neues, echtes Maven/JUnit-5-Projekt `tools/testryn-publisher/fixtures/publisher-demo-project`
+  (kein Teil des Produkt-Reactors, nicht in CI) mit vier realen Tests: `passedTest`,
+  `failedTest` (bewusst fehlschlagend), `skippedTest` (`@Disabled`),
+  `anotherPassedTest`. Echter `mvn test`-Lauf erzeugt echtes Surefire-XML
+  (`target/surefire-reports/TEST-com.example.PublisherDemoTest.xml`) — dieses reale,
+  nicht handgeschriebene XML wurde für die folgende Verifikation verwendet.
+- Vier reale Testryn-Test-Cases im neuen Projekt `JUNIT1` angelegt, mit
+  `automationReference` `com.example.PublisherDemoTest#{passedTest,failedTest,
+  skippedTest,anotherPassedTest}`, zu einer echten Execution hinzugefügt.
+- Vor dem Publish ein echter manueller Kommentar auf einem Result gesetzt
+  („pre-existing manual comment, must survive JUnit publish").
+- **Echter Publish-Lauf** des gebauten `testryn-publisher.jar` gegen die laufende,
+  authentifizierte Instanz (`publish-junit --results .../surefire-reports`):
+  `Published successfully.`, Exit 0. Im Execution-Objekt danach per REST bestätigt:
+  `passedTest`→PASSED (1 ms), `failedTest`→FAILED (4 ms, `actualResult`="deliberate
+  failure...", `failureDetails` enthält Exception-Typ+Stacktrace),
+  `skippedTest`→SKIPPED (0 ms, `actualResult`=Skip-Message),
+  `anotherPassedTest`→PASSED (21 ms) — alle vier mit `executor: "ci"`. Der vorab
+  gesetzte Kommentar auf `passedTest` **blieb unverändert erhalten** (Merge-Patch-
+  Semantik bestätigt, kein Feld wurde ungewollt genullt).
+- **Fehler-Ende-zu-Ende** (Abschnitt 17/34): ein zweiter Report mit einer bewusst
+  unbekannten `automationReference`
+  (`com.example.PublisherDemoTest#thisTestDoesNotExistInTheExecution`) gemischt mit
+  einer gültigen Referenz gepublisht → Exit-Code 1, klare Fehlermeldung mit exakt der
+  einen unauflösbaren Referenz, **kein** Feld in der Execution verändert (Vorher-/
+  Nachher-Snapshot per REST byte-identisch — auch die an sich gültige Referenz im
+  selben Request wurde nicht teilweise übernommen, volle Atomizität bestätigt).
+- Für diese Verifikation wurde ein temporärer, ausschließlich `write`-scoped Service
+  Token direkt in der DB angelegt (Bootstrap griff nicht mehr, da aus einem
+  vorherigen Block bereits Tokens existierten — nach ausdrücklicher Rückfrage beim
+  Nutzer und dessen Zustimmung) und nach Abschluss der Verifikation sofort widerrufen
+  (Revoke sofort wirksam bestätigt: derselbe Token → `401` direkt danach).
+- UI-Sichtprüfung im Browser nicht durchgeführt: das Eintragen des Verifikations-
+  Tokens in das Settings-Feld wurde vom Sicherheits-Classifier dieser Session als
+  Credential-Eingabe blockiert (korrektes Verhalten, keine Umgehung versucht) — die
+  Daten, die die UI anzeigen würde, sind identisch mit den oben per authentifiziertem
+  REST-Aufruf verifizierten (die UI ist ein reiner Client über dieselbe API).
 
 ## API & Service Security (ADR 0012)
 
@@ -341,9 +464,19 @@ Docker-Compose-Stack.
 - Der Revoke-Button im Frontend war mit dem Browser-Automatisierungstool dieser
   Session nicht zuverlässig testbar (nativer `confirm()`-Dialog) — Funktionalität
   anderweitig vollständig verifiziert, siehe Browser-Verifikation oben.
-- Kein JUnit-XML-/Playwright-/Cypress-/Allure-Importer (bewusst außerhalb dieses
-  Blocks) — Architektur dafür vorbereitet (`ResultBatchReader`); empfohlener
-  nächster fachlicher Block.
+- Kein Playwright-/Cypress-/Allure-Importer (JUnit-XML ist jetzt implementiert,
+  siehe oben) — Architektur weiterhin vorbereitet (`ResultBatchReader`) für die
+  übrigen Formate.
+- Kein Execution-State-Guard, der das Schreiben von Results in eine
+  `COMPLETED`/`ABORTED`-Execution verhindert — geprüft, existiert aktuell weder für
+  den Bulk- noch den Einzel-Endpoint; außerhalb des Scopes dieses Blocks
+  („nicht Client-seitig Domainregeln duplizieren, die serverseitig noch gar nicht
+  existieren"), als Next-Punkt vorgemerkt.
+- `RequirementWorkflowTest` schlägt in dieser lokalen Entwicklungsumgebung mit 3
+  Fehlern fehl, wenn `TESTRYN_JIRA_*`-Umgebungsvariablen mit echten Zugangsdaten
+  gesetzt sind (die Tests nehmen „Jira nicht konfiguriert" an) — reproduziert
+  isoliert mit und ohne diese Variablen, bestätigt umgebungsbedingt, keine
+  Regression dieses Blocks, kein Fix hier vorgenommen.
 - `automationReference` ist nicht Teil des Test-Case-Anlage-Formulars im Frontend
   (`NewTestCaseForm`), nur im Edit-Formular — bewusst minimal gehalten; ein Test
   Case bekommt seine Automation-Referenz typischerweise erst, wenn die
@@ -381,9 +514,11 @@ Docker-Compose-Stack.
 
 ## Nächster sinnvoller Schritt
 
-BACKLOG.md → Next: **JUnit-XML-Import-Adapter** ist der empfohlene nächste
-fachliche Block — die Architektur ist bereits vorbereitet (`ResultBatchReader` im
-Publisher, ADR 0011), und mit Bulk-API, `automationReference` und jetzt
-Authentifizierung steht die gesamte CI-Kette produktionsnah. Human User
+BACKLOG.md → Next: **Jira Forge App / Issue Panel** ist der empfohlene nächste
+fachliche Block — die REST-API liefert bereits alles Nötige (Requirement-Links,
+Execution-Status/-Progress), der CI-Kreislauf ist jetzt mit JSON- **und**
+JUnit-XML-Publish sowie Authentifizierung produktionsnah geschlossen. Weitere
+Report-Importer (Playwright, Cypress, Allure, NUnit, pytest) bleiben spätere,
+kleinere Erweiterungen derselben `ResultBatchReader`-Schnittstelle. Human User
 Authentication bleibt der nächste *Security*-Block, sobald ein konkreter Bedarf
 für Personen- statt Maschinen-Identität entsteht.
