@@ -28,11 +28,14 @@ java -jar target/testryn-publisher.jar publish \
 - `--execution-id` may be omitted if the results JSON itself carries an
   `"executionId"` field.
 - Set `TESTRYN_API_TOKEN` in the environment to send it as a bearer token (never as a
-  CLI argument). The backend does not enforce it yet (ADR 0011) -- the publisher is
-  simply ready for when it does.
+  CLI argument -- CLI arguments end up in shell history and process listings). As of
+  ADR 0012, the backend now enforces this: a `testryn:write`-scoped token is
+  required, or the publish fails with a clean 401/403 message. See
+  [docs/security.md](../../docs/security.md) for how to create one.
 
 Exit codes: `0` success, `1` the request reached Testryn but failed (validation
-error, HTTP error, or a transport failure), `2` a usage error (bad/missing arguments).
+error, HTTP error, missing/invalid/insufficiently-scoped token, or a transport
+failure), `2` a usage error (bad/missing arguments).
 
 ## Results JSON format
 

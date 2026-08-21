@@ -154,6 +154,51 @@ class TestrynApiClientTest {
     }
 
     @Test
+    void aMissingOrInvalidTokenProducesA401Outcome() throws IOException {
+        FakeHttpTransport transport = FakeHttpTransport.returning(401, """
+                {"code":"UNAUTHORIZED","message":"Authentication is required."}
+                """);
+        TestrynApiClient client = new TestrynApiClient(transport, "http://localhost:8080", null);
+
+        PublishOutcome outcome = client.publish("exec-1", List.of(new PublisherResultInput(
+                "r1", null, "PASSED", null, null, "ci", null, null)));
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.httpStatus()).isEqualTo(401);
+        assertThat(outcome.message()).contains("Authentication is required");
+    }
+
+    @Test
+    void aReadOnlyTokenAttemptingABulkUpdateProducesA403Outcome() throws IOException {
+        FakeHttpTransport transport = FakeHttpTransport.returning(403, """
+                {"code":"FORBIDDEN","message":"The service token does not have the required scope."}
+                """);
+        TestrynApiClient client = new TestrynApiClient(transport, "http://localhost:8080", "read-only-token");
+
+        PublishOutcome outcome = client.publish("exec-1", List.of(new PublisherResultInput(
+                "r1", null, "PASSED", null, null, "ci", null, null)));
+
+        assertThat(outcome.success()).isFalse();
+        assertThat(outcome.httpStatus()).isEqualTo(403);
+        assertThat(outcome.message()).contains("does not have the required scope");
+    }
+
+    @Test
+    void theConfiguredTokenValueNeverAppearsInAFailureOutcome() throws IOException {
+        FakeHttpTransport transport = FakeHttpTransport.returning(401, """
+                {"code":"UNAUTHORIZED","message":"Authentication is required."}
+                """);
+        String secretToken = "testryn_" + "a".repeat(24) + "_MUST-NEVER-APPEAR-IN-OUTPUT";
+        TestrynApiClient client = new TestrynApiClient(transport, "http://localhost:8080", secretToken);
+
+        PublishOutcome outcome = client.publish("exec-1", List.of(new PublisherResultInput(
+                "r1", null, "PASSED", null, null, "ci", null, null)));
+
+        assertThat(outcome.message()).doesNotContain(secretToken).doesNotContain("MUST-NEVER-APPEAR-IN-OUTPUT");
+        assertThat(outcome.violations().toString()).doesNotContain(secretToken);
+    }
+
+    @Test
     void aTransportFailurePropagatesAsIOException() {
         HttpTransport transport = (url, method, body, headers) -> {
             throw new IOException("Connection refused");
