@@ -9,5 +9,6 @@
     <include file="db/changelog/changes/0002-execution-result-actual-result.sql" relativeToChangelogFile="false"/>
     <include file="db/changelog/changes/0003-requirement-link-metadata.sql" relativeToChangelogFile="false"/>
     <include file="db/changelog/changes/0004-test-case-automation-reference.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/changes/0005-service-tokens.sql" relativeToChangelogFile="false"/>
 
 </databaseChangeLog>

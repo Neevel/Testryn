@@ -51,6 +51,12 @@ testryn:
     api-token: ${TESTRYN_JIRA_API_TOKEN:}
     auth-type: ${TESTRYN_JIRA_AUTH_TYPE:API_TOKEN}
     active: ${TESTRYN_JIRA_ACTIVE:true}
+  security:
+    # Bootstrap-only (Abschnitt 12): becomes the first ADMIN service token, but only
+    # if no service tokens exist yet -- see ServiceTokenBootstrap. Empty/unset means
+    # "no bootstrap token", not "auth disabled" -- auth is always enforced once this
+    # security chain is on the classpath.
+    bootstrap-token: ${TESTRYN_BOOTSTRAP_TOKEN:}
 
 logging:
   level:

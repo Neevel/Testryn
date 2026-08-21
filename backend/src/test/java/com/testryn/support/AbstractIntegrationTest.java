@@ -1,7 +1,13 @@
 package com.testryn.support;
 
+import com.testryn.security.domain.ServiceTokenScope;
+import com.testryn.security.service.ServiceTokenService;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.autoconfigure.web.servlet.MockMvcBuilderCustomizer;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -10,6 +16,9 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.EnumSet;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 /**
  * Base class for tests that need a real, disposable PostgreSQL database (matching
@@ -30,6 +39,12 @@ import java.nio.file.Path;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
+// Spring Boot only auto-detects a nested @TestConfiguration on the CONCRETE test
+// class actually being run, not one inherited from an abstract superclass -- an
+// explicit @Import here is required for DefaultAuthConfiguration below to apply to
+// every subclass (found the hard way: without this, every request in every
+// subclass got a real, unauthenticated 401).
+@Import(AbstractIntegrationTest.DefaultAuthConfiguration.class)
 public abstract class AbstractIntegrationTest {
 
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
@@ -54,5 +69,31 @@ public abstract class AbstractIntegrationTest {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("testryn.storage.base-path", () -> STORAGE_DIR.toString());
+    }
+
+    /**
+     * Every existing test in this suite predates service-token authentication (ADR
+     * 0012) and asserts specific business-logic status codes (400/404/409/...), not
+     * auth status codes -- rewriting every {@code mockMvc.perform(...)} call across
+     * the whole suite to attach a header would be a huge, purely mechanical, and
+     * error-prone change. Instead, this {@link MockMvcBuilderCustomizer} attaches a
+     * real, freshly-created ADMIN-scoped bearer token as a *default* request header:
+     * every request in every test is authenticated (through the real security filter
+     * chain, not a bypass) unless a test explicitly overrides the header itself --
+     * which the dedicated authentication/authorization tests do, to exercise
+     * missing/invalid/revoked/expired/wrong-scope tokens.
+     */
+    @TestConfiguration
+    static class DefaultAuthConfiguration {
+
+        @Bean
+        MockMvcBuilderCustomizer defaultAuthorizationHeaderCustomizer(ServiceTokenService serviceTokenService) {
+            return builder -> {
+                var generated = serviceTokenService.create(
+                        "Integration Test Suite Token", "Auto-created by AbstractIntegrationTest",
+                        EnumSet.of(ServiceTokenScope.ADMIN), null);
+                builder.defaultRequest(get("/").header("Authorization", "Bearer " + generated.rawToken()));
+            };
+        }
     }
 }

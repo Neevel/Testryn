@@ -91,7 +91,8 @@ public class GlobalExceptionHandler {
                 status.getReasonPhrase(),
                 message,
                 request.getRequestURI(),
-                fieldErrors
+                fieldErrors,
+                null
         );
         return ResponseEntity.status(status).body(body);
     }
