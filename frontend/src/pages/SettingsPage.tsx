@@ -82,6 +82,15 @@ function DevTokenSection() {
   );
 }
 
+/** `active` alone can't distinguish *why* a token is inactive -- a token past its
+ * expiresAt has revokedAt = null, so labeling every inactive token "Revoked" would
+ * misrepresent one that simply expired (found during browser verification). */
+function tokenStatusLabel(token: ServiceToken): string {
+  if (token.active) return "Active";
+  if (token.revokedAt) return "Revoked";
+  return "Expired";
+}
+
 function ServiceTokensSection() {
   const [tokens, setTokens] = useState<ServiceToken[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -154,7 +163,7 @@ function ServiceTokensSection() {
                     <td className="muted">{token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString() : "Never"}</td>
                     <td>
                       <span className={`badge ${token.active ? "badge-success" : ""}`}>
-                        {token.active ? "Active" : "Revoked"}
+                        {tokenStatusLabel(token)}
                       </span>
                     </td>
                     <td>
