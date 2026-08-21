@@ -28,6 +28,10 @@ services:
       TESTRYN_JIRA_BASE_URL: ${TESTRYN_JIRA_BASE_URL:-}
       TESTRYN_JIRA_EMAIL: ${TESTRYN_JIRA_EMAIL:-}
       TESTRYN_JIRA_API_TOKEN: ${TESTRYN_JIRA_API_TOKEN:-}
+      # Becomes the first admin service token, but only on the very first start with
+      # no service tokens yet -- never a standing credential in this file itself, see
+      # docs/security.md. Leave unset and create tokens another way if you prefer.
+      TESTRYN_BOOTSTRAP_TOKEN: ${TESTRYN_BOOTSTRAP_TOKEN:-}
     volumes:
       - report-storage:/data/reports
     ports:

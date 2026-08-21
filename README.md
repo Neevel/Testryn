@@ -72,7 +72,12 @@ TESTRYN_STORAGE_BASE_PATH=./data/reports
 TESTRYN_JIRA_BASE_URL=https://<tenant>.atlassian.net
 TESTRYN_JIRA_EMAIL=<email>
 TESTRYN_JIRA_API_TOKEN=<token>
+# einmalig beim allerersten Start ohne bestehende Service Tokens -- siehe docs/security.md:
+TESTRYN_BOOTSTRAP_TOKEN=<selbst gewählter Wert>
 ```
+
+Die API ist ab diesem Block durchgängig durch Service Tokens geschützt (ADR 0012) --
+Details, Scopes und Bootstrap-Verfahren: [docs/security.md](docs/security.md).
 
 ### Frontend
 
@@ -105,7 +110,11 @@ API nutzbar. Vollständige, generierte Referenz zur Laufzeit unter
 /api/v1/executions/{id}/results/{resultId}
 /api/v1/executions/{id}/results        (bulk update, for CI pipelines -- see docs/ci-integration.md)
 /api/v1/executions/{id}/reports
+/api/v1/service-tokens                 (auth management, requires testryn:admin -- see docs/security.md)
 ```
+
+Jeder Aufruf braucht einen gültigen Service Token (`Authorization: Bearer ...`) --
+siehe [docs/security.md](docs/security.md).
 
 ## Testausführung
 

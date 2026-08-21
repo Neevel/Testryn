@@ -10,14 +10,38 @@ Jira Story
    -> Test Plan / Execution
    -> external test framework runs the tests
    -> CI pipeline maps results to Testryn's format
-   -> testryn-publisher
-   -> Bulk Result Update API
+   -> TESTRYN_API_TOKEN
+        -> testryn-publisher
+        -> Authorization: Bearer <token>
+        -> Bulk Result Update API
    -> PASSED / FAILED / SKIPPED / BLOCKED in Testryn
 ```
 
 Testryn never executes tests itself. It owns test definitions, traceability,
 executions, results, and history -- the automated framework (JUnit, Playwright,
 Selenium, whatever) stays entirely outside Testryn's domain model.
+
+## 0. Authenticate
+
+As of [ADR 0012](adr/0012-service-token-authentication.md), every API call needs a
+service token with at least the `testryn:write` scope. Create one (requires an
+`admin`-scoped token yourself, or use the bootstrap token -- see
+[docs/security.md](security.md)):
+
+```bash
+curl -X POST http://localhost:8080/api/v1/service-tokens \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TESTRYN_ADMIN_TOKEN" \
+  -d '{"name":"CI Pipeline","description":"Publisher token","scopes":["testryn:read","testryn:write"]}'
+```
+
+The response includes the raw token **exactly once** -- copy it into your CI
+pipeline's secret store as `TESTRYN_API_TOKEN`. It cannot be retrieved again; if
+it's lost, revoke it and create a new one. Never put a real token value in a
+pipeline config file, a repository, or a log -- use your CI platform's secrets
+mechanism (GitHub Actions secrets, GitLab CI/CD variables, ...).
+
+Every example below assumes `TESTRYN_API_TOKEN` is set in the environment.
 
 ## 1. One-time setup: map test cases to automated tests
 
@@ -29,6 +53,7 @@ Selenium test ID, just a stable label your CI mapping step can look up.
 ```bash
 curl -X PUT http://localhost:8080/api/v1/test-cases/{id} \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TESTRYN_API_TOKEN" \
   -d '{"title":"Login with valid credentials","priority":"HIGH","status":"ACTIVE",
        "tags":[],"steps":[...],"automationReference":"auth.login.valid"}'
 ```
@@ -42,14 +67,15 @@ Either from a test plan (a new iteration, ADR 0003):
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/test-plans/{planId}/executions \
-  -H "Content-Type: application/json" -d '{"name":"Nightly regression #482"}'
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TESTRYN_API_TOKEN" \
+  -d '{"name":"Nightly regression #482"}'
 ```
 
 or ad-hoc, from an explicit set of test case IDs:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/projects/{projectKey}/executions \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TESTRYN_API_TOKEN" \
   -d '{"name":"Smoke run","testCaseIds":["<id-1>","<id-2>"]}'
 ```
 
@@ -86,6 +112,8 @@ it never silently creates a test case.
 ## 4. Publish
 
 ```bash
+export TESTRYN_API_TOKEN=<the write-scoped token from step 0, from your CI secret store>
+
 java -jar testryn-publisher.jar publish \
   --base-url http://localhost:8080 \
   --execution-id 6287af96-50fc-460a-a898-d2a2ab419458 \
@@ -93,7 +121,19 @@ java -jar testryn-publisher.jar publish \
 ```
 
 (`--execution-id` may be omitted if the JSON already carries `executionId`; `--results`
-may be omitted, or `-`, to read from stdin instead of a file.)
+may be omitted, or `-`, to read from stdin instead of a file. `TESTRYN_API_TOKEN` is
+read from the environment only -- never pass a token as a CLI argument, it would end
+up in shell history and process listings.)
+
+Without a valid token, or with a `read`-only one, the publish fails fast with a clear
+message and a non-zero exit code -- never a silent no-op:
+
+```
+Authentication is required. (HTTP 401)
+```
+```
+The service token does not have the required scope. (HTTP 403)
+```
 
 The whole batch is atomic (ADR 0010): if any single entry is invalid (unknown
 reference, wrong execution, invalid status, ...), nothing in the request is applied,
@@ -125,7 +165,7 @@ same endpoint directly:
 
 ```bash
 curl -X PATCH http://localhost:8080/api/v1/executions/{executionId}/results \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TESTRYN_API_TOKEN" \
   -d '{
     "results": [
       {"automationReference": "auth.login.valid", "status": "PASSED", "durationMs": 1420, "executor": "ci"},
@@ -143,6 +183,8 @@ Testryn instance, or `docs/adr/0010-bulk-result-update.md`.
 No JUnit XML / Playwright / Cypress / Allure report parsing -- the publisher's input
 is a plain, framework-agnostic JSON your own CI step produces. `ResultBatchReader`
 (see ADR 0011) is the seam a later importer would plug into, without touching the
-publisher's core or the Bulk API. No authentication is enforced by the API yet
-(ADR 0011, Abschnitt 20) -- do not expose a Testryn instance you use for real CI
-results to the public internet until that lands.
+publisher's core or the Bulk API. Authentication is now enforced on every endpoint
+(ADR 0012) -- see [docs/security.md](security.md) for scopes, token management, and
+bootstrap. Still not built: rate limiting, and human user login for the frontend
+(a service token is a machine credential, not a personal one -- see
+`docs/security.md` for the frontend's interim story).
