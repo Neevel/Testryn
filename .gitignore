@@ -2,6 +2,7 @@
 backend/target/
 tools/*/target/
 tools/*/dependency-reduced-pom.xml
+tools/*/fixtures/*/target/
 *.class
 *.log
 
