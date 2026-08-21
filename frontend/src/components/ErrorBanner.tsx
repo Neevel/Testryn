@@ -9,6 +9,9 @@ export function ErrorBanner({ message }: { message: string | null }) {
 }
 
 export function errorMessage(err: unknown): string {
+  if (err instanceof Error && "status" in err && (err as { status?: number }).status === 401) {
+    return "Authentication is required. Enter an API token on the Settings page to continue.";
+  }
   if (err instanceof Error && err.message) return err.message;
   return "Something went wrong. Please try again.";
 }

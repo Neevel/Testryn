@@ -11,6 +11,9 @@ import type {
   Report,
   RequirementLink,
   RequirementProviderType,
+  ServiceToken,
+  ServiceTokenCreated,
+  ServiceTokenScope,
   Step,
   TestCase,
   TestCasePriority,
@@ -138,6 +141,13 @@ export const ExecutionsApi = {
       failureDetails?: string | null;
     },
   ) => api.patch<ExecutionResult>(`/api/v1/executions/${executionId}/results/${resultId}`, input),
+};
+
+export const ServiceTokensApi = {
+  list: () => api.get<ServiceToken[]>("/api/v1/service-tokens"),
+  create: (input: { name: string; description?: string; scopes: ServiceTokenScope[]; expiresAt?: string }) =>
+    api.post<ServiceTokenCreated>("/api/v1/service-tokens", input),
+  revoke: (id: string) => api.post<ServiceToken>(`/api/v1/service-tokens/${id}/revoke`),
 };
 
 export const ReportsApi = {

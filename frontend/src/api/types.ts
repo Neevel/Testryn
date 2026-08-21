@@ -163,6 +163,36 @@ export interface ApiError {
   message: string;
   path: string;
   fieldErrors: { field: string; message: string }[] | null;
+  /** Stable machine-readable code (e.g. "UNAUTHORIZED", "FORBIDDEN") -- present on
+   * auth-related errors, null on most others (ADR 0012). */
+  code: string | null;
+}
+
+/** Machine-to-machine credential scopes (ADR 0012). Wire format exactly as the
+ * backend expects/returns -- see ServiceTokenScope.java. */
+export type ServiceTokenScope = "testryn:read" | "testryn:write" | "testryn:admin";
+
+export interface ServiceToken {
+  id: string;
+  name: string;
+  description: string | null;
+  scopes: ServiceTokenScope[];
+  createdAt: string;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  active: boolean;
+}
+
+/** Only returned once, from the create endpoint -- see ServiceTokenCreatedResponse. */
+export interface ServiceTokenCreated {
+  id: string;
+  name: string;
+  description: string | null;
+  token: string;
+  scopes: ServiceTokenScope[];
+  createdAt: string;
+  expiresAt: string | null;
 }
 
 /** Mirrors com.testryn.common.web.PageResponse -- see ADR 0008. */

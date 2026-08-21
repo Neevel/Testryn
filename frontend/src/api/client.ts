@@ -1,4 +1,5 @@
 import type { ApiError } from "./types";
+import { getDevToken } from "./devToken";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8080";
 
@@ -13,10 +14,12 @@ export class ApiRequestError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const devToken = getDevToken();
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...(devToken ? { Authorization: `Bearer ${devToken}` } : {}),
       ...init?.headers,
     },
   });
