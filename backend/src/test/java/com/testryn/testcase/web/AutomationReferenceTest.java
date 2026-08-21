@@ -62,6 +62,16 @@ class AutomationReferenceTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void acceptsTheJUnitClassnameHashNameConvention() throws Exception {
+        // ADR 0013: testryn-publisher's publish-junit maps JUnit XML to
+        // classname#name (e.g. com.example.LoginTest#successfulLogin) -- '#' was
+        // deliberately added to ADR 0009's original character set for this.
+        JsonNode created = createTestCase("Login valid (JUnit)", "com.example.LoginTest#successfulLogin");
+
+        assertThat(created.get("automationReference").asText()).isEqualTo("com.example.LoginTest#successfulLogin");
+    }
+
+    @Test
     void findsATestCaseByExactAutomationReference() throws Exception {
         createTestCase("Login valid", "auth.login.valid");
         createTestCase("Login invalid", "auth.login.invalid");

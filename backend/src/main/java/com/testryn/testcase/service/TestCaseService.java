@@ -35,8 +35,13 @@ import static com.testryn.testcase.service.TestCaseCommands.UpdateTestCaseComman
 public class TestCaseService {
 
     /** Machine-friendly identifier only: letters/digits/dot/underscore/hyphen, e.g.
-     * {@code auth.login.valid} -- Abschnitt 8 ("maschinenfreundlich"). */
-    private static final Pattern AUTOMATION_REFERENCE_PATTERN = Pattern.compile("^[A-Za-z0-9_.\\-]{1,200}$");
+     * {@code auth.login.valid} -- Abschnitt 8 ("maschinenfreundlich"). ADR 0009's
+     * original character set additionally allows {@code #} as of ADR 0013: the JUnit
+     * XML publish-junit importer's {@code classname#name} convention (e.g.
+     * {@code com.example.LoginTest#successfulLogin}) is exactly the same separator
+     * JUnit/IDE tooling itself already uses for a class-plus-method reference, and is
+     * not ambiguous with any other allowed character. */
+    private static final Pattern AUTOMATION_REFERENCE_PATTERN = Pattern.compile("^[A-Za-z0-9_.#\\-]{1,200}$");
 
     private final TestCaseRepository testCaseRepository;
     private final TestCaseVersionRepository testCaseVersionRepository;
@@ -155,8 +160,8 @@ public class TestCaseService {
         String trimmed = raw.trim();
         if (!AUTOMATION_REFERENCE_PATTERN.matcher(trimmed).matches()) {
             throw new BadRequestException(
-                    "automationReference must be a machine-friendly token (letters, digits, '.', '_', '-' only), "
-                            + "e.g. 'auth.login.valid': " + raw);
+                    "automationReference must be a machine-friendly token (letters, digits, '.', '_', '-', '#' only), "
+                            + "e.g. 'auth.login.valid' or 'com.example.LoginTest#successfulLogin': " + raw);
         }
         return trimmed;
     }

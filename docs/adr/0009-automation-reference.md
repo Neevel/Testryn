@@ -1,6 +1,6 @@
 # ADR 0009: `automationReference` als stabile Automation-Mapping-Referenz
 
-- Status: Angenommen
+- Status: Angenommen (Zeichensatz erweitert durch [ADR 0013](0013-junit-xml-automation-reference.md))
 - Datum: 2026-08-20
 
 ## Kontext
@@ -20,7 +20,9 @@ gekoppelt werden.
   Verhalten von `updateMetadata`.
 - **Format**: nur `[A-Za-z0-9_.-]`, 1–200 Zeichen (z. B. `auth.login.valid`). Kein
   Framework-Präfix, keine erzwungene Struktur darüber hinaus — "maschinenfreundlich",
-  nicht an JUnit-Klassennamen o. Ä. gebunden.
+  nicht an JUnit-Klassennamen o. Ä. gebunden. *(Erweitert um `#` durch ADR 0013 für
+  die `classname#name`-Konvention des JUnit-XML-Publisher-Adapters — der restliche
+  Zeichensatz und alle übrigen Entscheidungen dieses ADRs bleiben unverändert.)*
 - **Eindeutigkeit**: projektweit eindeutig, nicht global. Durchgesetzt auf zwei
   Ebenen: Service-Layer-Check vor dem Schreiben (klare 409-Fehlermeldung) **und**
   partieller Unique-Index in der DB (`WHERE automation_reference IS NOT NULL`,
