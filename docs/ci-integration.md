@@ -9,9 +9,9 @@ Jira Story
    -> Test Cases (with an automationReference each)
    -> Test Plan / Execution
    -> external test framework runs the tests
-   -> CI pipeline maps results to Testryn's format
+   -> JUnit/Surefire XML directly, or a CI step maps results to Testryn's plain JSON
    -> TESTRYN_API_TOKEN
-        -> testryn-publisher
+        -> testryn-publisher (publish-junit or publish)
         -> Authorization: Bearer <token>
         -> Bulk Result Update API
    -> PASSED / FAILED / SKIPPED / BLOCKED in Testryn
@@ -158,6 +158,108 @@ error. See [tools/testryn-publisher/README.md](../tools/testryn-publisher/README
 for the full CLI reference and [ADR 0011](adr/0011-ci-publisher.md) for the design
 decisions behind the tool itself.
 
+## 5. Maven Surefire / Failsafe: skip the JSON entirely
+
+If your automated tests are plain Maven/JUnit, `publish-junit` reads
+`target/surefire-reports` (or `target/failsafe-reports` -- same XML schema, no
+special-casing needed) directly, closing the loop without a hand-built results file:
+
+```
+mvn test -> target/surefire-reports/*.xml -> testryn-publisher publish-junit -> Testryn
+```
+
+### One-time setup: give each test case a `classname#name` reference
+
+```bash
+curl -X PUT http://localhost:8080/api/v1/test-cases/{id} \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TESTRYN_API_TOKEN" \
+  -d '{"title":"Login with valid credentials","priority":"HIGH","status":"ACTIVE",
+       "tags":[],"steps":[...],
+       "automationReference":"com.example.LoginTest#successfulLogin"}'
+```
+
+`classname#name`, taken verbatim from the XML `<testcase>` attributes -- not just the
+bare method name, since method names alone collide across classes project-wide. See
+[ADR 0013](adr/0013-junit-xml-automation-reference.md) for the full convention,
+including how it handles parameterized/dynamic test display names.
+
+### Per pipeline run
+
+```bash
+mvn test  # produces target/surefire-reports/*.xml, testFailureIgnore is your call
+
+export TESTRYN_API_TOKEN=<write-scoped token from step 0>
+
+java -jar testryn-publisher.jar publish-junit \
+  --base-url http://localhost:8080 \
+  --execution-id 4711 \
+  --results target/surefire-reports
+```
+
+`--results` also accepts individual files, several `--results` flags, or a
+shell-expanded glob (`--results target/surefire-reports/*.xml`) -- see
+[tools/testryn-publisher/README.md](../tools/testryn-publisher/README.md) for the
+full flag reference, dry-run preview format, and security hardening notes (JUnit XML
+is untrusted input -- the parser is hardened against XXE).
+
+### Result semantics
+
+| JUnit XML | Testryn status |
+|---|---|
+| no `<failure>`/`<error>`/`<skipped>` child | `PASSED` |
+| `<failure>` | `FAILED` |
+| `<error>` | `FAILED` |
+| `<skipped>` | `SKIPPED` |
+| *(none of the above -- always a manual/system decision)* | `BLOCKED` |
+
+`BLOCKED` is never produced by the JUnit importer -- there is no JUnit XML construct
+that means "blocked", and guessing one would misrepresent the actual test outcome.
+
+### Jenkins
+
+```groovy
+pipeline {
+    agent any
+    environment {
+        TESTRYN_API_TOKEN = credentials('testryn-ci-token') // Jenkins credential ID, never a literal value here
+    }
+    stages {
+        stage('Test') {
+            steps {
+                sh 'mvn test'
+            }
+        }
+        stage('Publish to Testryn') {
+            steps {
+                sh '''
+                    java -jar testryn-publisher.jar publish-junit \
+                      --base-url https://testryn.internal \
+                      --execution-id ${TESTRYN_EXECUTION_ID} \
+                      --results target/surefire-reports
+                '''
+            }
+        }
+    }
+}
+```
+
+`credentials('testryn-ci-token')` pulls the token from Jenkins' own credential store
+at runtime and masks it in the build log -- no real token value is ever written into
+the pipeline definition itself.
+
+### GitHub Actions
+
+```yaml
+- run: mvn test
+- run: |
+    java -jar testryn-publisher.jar publish-junit \
+      --base-url https://testryn.internal \
+      --execution-id ${{ inputs.execution_id }} \
+      --results target/surefire-reports
+  env:
+    TESTRYN_API_TOKEN: ${{ secrets.TESTRYN_API_TOKEN }}
+```
+
 ## Calling the Bulk API directly (no publisher)
 
 The publisher is a convenience, not a requirement -- any HTTP client can call the
@@ -178,13 +280,16 @@ curl -X PATCH http://localhost:8080/api/v1/executions/{executionId}/results \
 Full request/response schema and error format: `GET /swagger-ui.html` on a running
 Testryn instance, or `docs/adr/0010-bulk-result-update.md`.
 
-## What this block does not cover
+## What this covers, and what's still not built
 
-No JUnit XML / Playwright / Cypress / Allure report parsing -- the publisher's input
-is a plain, framework-agnostic JSON your own CI step produces. `ResultBatchReader`
-(see ADR 0011) is the seam a later importer would plug into, without touching the
-publisher's core or the Bulk API. Authentication is now enforced on every endpoint
-(ADR 0012) -- see [docs/security.md](security.md) for scopes, token management, and
-bootstrap. Still not built: rate limiting, and human user login for the frontend
-(a service token is a machine credential, not a personal one -- see
-`docs/security.md` for the frontend's interim story).
+JUnit-compatible XML (Maven Surefire and Failsafe) is a supported input format as of
+`publish-junit` (see section 5 above and ADR 0013) -- `ResultBatchReader` (ADR 0011)
+was exactly the seam this plugged into, without any change to the publisher's core or
+the Bulk API. Playwright, Cypress, and Allure report parsing are not built -- the
+same `ResultBatchReader` seam is where a later importer for any of those would go.
+Authentication is enforced on every endpoint (ADR 0012) -- see
+[docs/security.md](security.md) for scopes, token management, and bootstrap. Still
+not built: rate limiting, human user login for the frontend (a service token is a
+machine credential, not a personal one -- see `docs/security.md` for the frontend's
+interim story), and any execution-state guard that would reject publishing into a
+`COMPLETED`/`ABORTED` execution (see `BACKLOG.md`).
