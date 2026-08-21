@@ -70,4 +70,90 @@ class PublisherCliTest {
 
         assertThat(options.apiToken()).isEqualTo("from-env-only");
     }
+
+    @Test
+    void parsesJUnitFlagsWithASingleResultsValue() {
+        JUnitPublishOptions options = PublisherCli.parseJUnit(
+                new String[] {"publish-junit", "--base-url", "http://localhost:8080",
+                        "--execution-id", "exec-1", "--results", "target/surefire-reports"},
+                "secret-token");
+
+        assertThat(options.baseUrl()).isEqualTo("http://localhost:8080");
+        assertThat(options.executionId()).isEqualTo("exec-1");
+        assertThat(options.resultsPaths()).containsExactly("target/surefire-reports");
+        assertThat(options.apiToken()).isEqualTo("secret-token");
+        assertThat(options.dryRun()).isFalse();
+    }
+
+    @Test
+    void parsesJUnitDryRunFlag() {
+        JUnitPublishOptions options = PublisherCli.parseJUnit(
+                new String[] {"publish-junit", "--base-url", "http://localhost:8080",
+                        "--execution-id", "exec-1", "--results", "a.xml", "--dry-run"},
+                null);
+
+        assertThat(options.dryRun()).isTrue();
+    }
+
+    @Test
+    void aRepeatedResultsFlagAccumulatesAllValues() {
+        JUnitPublishOptions options = PublisherCli.parseJUnit(
+                new String[] {"publish-junit", "--base-url", "http://localhost:8080",
+                        "--execution-id", "exec-1",
+                        "--results", "a.xml",
+                        "--results", "b.xml"},
+                null);
+
+        assertThat(options.resultsPaths()).containsExactly("a.xml", "b.xml");
+    }
+
+    @Test
+    void aSingleResultsFlagGreedilyConsumesAShellExpandedGlob() {
+        // Simulates what the shell does to `--results target/surefire-reports/*.xml`
+        // before the JVM ever sees argv: many separate tokens after one flag.
+        JUnitPublishOptions options = PublisherCli.parseJUnit(
+                new String[] {"publish-junit", "--base-url", "http://localhost:8080",
+                        "--execution-id", "exec-1",
+                        "--results", "a.xml", "b.xml", "c.xml",
+                        "--dry-run"},
+                null);
+
+        assertThat(options.resultsPaths()).containsExactly("a.xml", "b.xml", "c.xml");
+        assertThat(options.dryRun()).isTrue();
+    }
+
+    @Test
+    void junitPublishRequiresExecutionId() {
+        assertThatThrownBy(() -> PublisherCli.parseJUnit(
+                new String[] {"publish-junit", "--base-url", "http://localhost:8080", "--results", "a.xml"}, null))
+                .isInstanceOf(PublisherCli.UsageException.class)
+                .hasMessageContaining("--execution-id");
+    }
+
+    @Test
+    void junitPublishRequiresResults() {
+        assertThatThrownBy(() -> PublisherCli.parseJUnit(
+                new String[] {"publish-junit", "--base-url", "http://localhost:8080", "--execution-id", "exec-1"},
+                null))
+                .isInstanceOf(PublisherCli.UsageException.class)
+                .hasMessageContaining("--results");
+    }
+
+    @Test
+    void junitPublishRequiresBaseUrl() {
+        assertThatThrownBy(() -> PublisherCli.parseJUnit(
+                new String[] {"publish-junit", "--execution-id", "exec-1", "--results", "a.xml"}, null))
+                .isInstanceOf(PublisherCli.UsageException.class)
+                .hasMessageContaining("--base-url");
+    }
+
+    @Test
+    void junitPublishNeverReadsATokenFromCommandLineArguments() {
+        JUnitPublishOptions options = PublisherCli.parseJUnit(
+                new String[] {"publish-junit", "--base-url", "http://localhost:8080",
+                        "--execution-id", "exec-1", "--results", "a.xml"},
+                "from-env-only");
+
+        assertThat(options.apiToken()).isEqualTo("from-env-only");
+    }
 }
