@@ -7,17 +7,131 @@ Stand: 2026-08-21
 
 ## Aktueller Meilenstein
 
-**Jira Cloud integration live-verified** (2026-08-21). Die bereits implementierte
-Jira-Integration (Verbindungskonfiguration, Issue-Lookup, ADF-Parsing,
-Fehlerbehandlung, Requirement-Link-Workflow) wurde gegen eine echte, private
-Jira-Cloud-Instanz end-to-end verifiziert — nicht nur gegen Unit-/Integrationstests
-ohne Jira-Abhängigkeit. Reiner Verification-Block, keine neuen Features, keine
-Refactorings (kein Live-Bug gefunden, der einen Codefix erzwungen hätte — der
-initiale Connection-Test-Fehlschlag war ein ungültiges Token, kein Testryn-Bug,
-siehe unten).
+**API & Service Security implementiert** (ADR 0012). Die REST-API war bis zu diesem
+Block vollständig offen — das zuvor identifizierte größte technische Risiko. Jetzt:
+Service-Token-Authentifizierung (Bearer Token, SHA-256-Hash, drei Scopes
+`read`/`write`/`admin`), Token-Verwaltungs-API, Bootstrap-Mechanismus, CI-Publisher
+vollständig auf Auth verifiziert, Frontend mit einer bewusst minimalen,
+ehrlich als solche gekennzeichneten Dev-Token-Übergangslösung (kein echtes Login —
+das bleibt ein separater, noch nicht begonnener Block). Details siehe „API & Service
+Security" unten.
 
-Der vorherige Block („Next Product Block": Bulk-Result-Update, `automationReference`,
-CI-Publisher) ist unverändert gültig — siehe Git-Log für Details.
+Die vorherigen Blöcke (Jira Cloud live-verifiziert; Bulk-Result-Update,
+`automationReference`, CI-Publisher) sind unverändert gültig — siehe Git-Log und die
+Abschnitte weiter unten in dieser Datei für Details.
+
+## API & Service Security (ADR 0012)
+
+**Backend:**
+
+- Neues Modul `security` (`domain`/`repository`/`service`/`web`/`config`):
+  `ServiceToken`-Entity (Name, Description, `lookupId` + `tokenHash` statt
+  Klartext, Scopes, `createdAt`/`lastUsedAt`/`expiresAt`/`revokedAt`),
+  `ServiceTokenService` (Erzeugung, SHA-256-Hashing, Verifikation — siehe ADR 0012
+  für die Begründung gegen eine Passwort-KDF), `ServiceTokenBootstrap`
+  (`TESTRYN_BOOTSTRAP_TOKEN`, nur beim allerersten Start ohne bestehende Tokens).
+- Token-Format `testryn_<lookupId>_<secret>` — `lookupId` (12 Byte, nicht geheim)
+  ermöglicht einen indexierten O(1)-Lookup statt eines Tabellenscans.
+- Spring Security, stateless, ohne Form-Login/HTTP-Basic/Session, CSRF für die
+  reine Bearer-Token-API deaktiviert (kein Cookie-/Session-basierter
+  Angriffsvektor). Ein `OncePerRequestFilter` löst den Header auf und flacht
+  Scope-Implikationen (`write` ⊇ `read`, `admin` ⊇ `write` ⊇ `read`) zu konkreten
+  Authorities ab, damit die eigentlichen Zugriffsregeln einfache
+  `hasAuthority(...)`-Deklarationen bleiben.
+- `GET`/`HEAD` unter `/api/**` → `testryn:read`; `POST`/`PUT`/`PATCH`/`DELETE` →
+  `testryn:write`; `/api/v1/service-tokens/**` → immer `testryn:admin`,
+  unabhängig von der Methode. `/v3/api-docs`, `/swagger-ui/**` bleiben bewusst
+  offen (kein bestehendes Dev/Prod-Profil, das hier sauber anzuknüpfen wäre).
+  Scope-Wire-Format ist `"testryn:read"`/`"testryn:write"`/`"testryn:admin"`
+  (Jackson `@JsonValue`/`@JsonCreator` auf dem Enum, DB-Spalte bleibt unberührt
+  bei den einfachen `READ`/`WRITE`/`ADMIN`-Namen) — ein Mismatch zwischen diesem
+  Wire-Format und der ursprünglichen Enum-Implementierung wurde durch die eigene
+  Integrationstestsuite gefunden und noch in diesem Block korrigiert.
+- 401/403 über eigene `AuthenticationEntryPoint`/`AccessDeniedHandler` im
+  bestehenden `ApiError`-Format (jetzt mit optionalem `code`-Feld, z. B.
+  `"UNAUTHORIZED"`/`"FORBIDDEN"` — additiv, kein Breaking Change).
+- Token-Verwaltungs-API (`POST`/`GET`/`GET /{id}`/`POST /{id}/revoke` unter
+  `/api/v1/service-tokens`), Rohwert nur in der Create-Response, danach nie wieder.
+- Migration `0005-service-tokens.sql` (`service_tokens`, `service_token_scopes`).
+
+**Publisher:** unverändert im Code (unterstützte `TESTRYN_API_TOKEN` bereits aus dem
+vorigen Block vorbereitend) — jetzt end-to-end gegen eine tatsächlich
+durchsetzende API verifiziert: fehlender/ungültiger Token → 401 → Exit-Code 1;
+`read`-Token gegen den Bulk-Endpoint → 403 → Exit-Code 1; `write`-Token → Erfolg →
+Exit-Code 0. Token-Wert erscheint in keiner Fehlerausgabe.
+
+**Frontend:** `Authorization`-Header wird aus einem `sessionStorage`-gehaltenen
+Dev-Token angehängt (nie im gebauten Bundle, nie `localStorage`) — Settings-Seite
+bekommt dafür einen neuen „Your API Token"-Bereich sowie eine vollständige
+Service-Tokens-Verwaltung (Liste, Anlage mit einmaliger Anzeige des Rohwerts,
+Revoke). Ausdrücklich als Entwicklungs-Übergangslösung gekennzeichnet, keine
+vorgetäuschte Login-Funktion (Abschnitt 8/ADR 0012).
+
+**Tests:** bestehende Testsuite umgestellt (`AbstractIntegrationTest` hängt jedem
+Request per Default einen frisch erzeugten ADMIN-Token an, sofern ein Test seinen
+eigenen `Authorization`-Header nicht explizit setzt) — alle bisherigen
+Regressionstests bleiben ohne Änderung an ihren eigentlichen Testkörpern grün.
+Neu: `ServiceTokenServiceTest` (17, reine Domain-/Hashing-/Verifikationslogik),
+`ServiceTokenAuthenticationTest`, `ServiceTokenManagementTest`,
+`BulkResultUpdateAuthTest`, `SecurityLoggingTest` (Log-Leakage-Prüfung mit
+Logback-`ListAppender`). Publisher: 3 neue Tests (401/403/Token-nie-in-Fehlermeldung).
+
+**`mvn test`: 107/107 grün.** `tools/testryn-publisher && mvn test`: 38/38 grün.
+`npm run build`/`npm run test`: fehlerfrei bzw. 5/5 grün. Ein pre-existing
+Testcontainer-Detail dabei entdeckt (nicht security-bezogen): mehrfach
+hintereinander in derselben Session laufende `mvn test`-Aufrufe gegen dieselbe
+Postgres-Instanz können bei zwei Testklassen mit `System.nanoTime() % 100000` als
+Projekt-Key-Generator sehr selten kollidieren (409 statt 201) — bei einem sauberen
+Einzellauf nicht reproduzierbar, kein Codefix in diesem Block (nicht
+sicherheitsrelevant, siehe „Bekannte Einschränkungen").
+
+### Browser-Verifikation (Abschnitt 30-32) — gegen `docker compose up --build`
+
+- **Workflow A** (kein Token → 401): `GET /api/v1/projects` ohne Header →
+  `401`/`UNAUTHORIZED`.
+- **Workflow B** (Read-Token): `GET` → `200`; `POST` → `403`/`FORBIDDEN`.
+- **Workflow C** (Write-Token): Bulk Result Update über einen echten
+  `write`-Token → `200`, Ergebnis korrekt persistiert.
+- **Workflow D** (Revoke): gültiger Token funktioniert, wird widerrufen, derselbe
+  Token danach → `401`; `lastUsedAt` dabei live in der DB/UI bestätigt aktualisiert.
+- **Workflow E** (Expiration): Token mit `expiresAt` in 2 Sekunden → vor Ablauf
+  `200`, nach Ablauf `401`.
+- **Workflow F** (Publisher): echtes `testryn-publisher.jar` — kein Token → `401`
+  → Exit 1; `read`-Token → `403` → Exit 1; `write`-Token → Erfolg → Exit 0,
+  Ergebnis sichtbar in der UI (Execution-Detailseite zeigt FAILED/HTTP 500/
+  Expected HTTP 200/By: ci/Duration: 0.9s — exakt wie vom Publisher gesendet).
+- **Bootstrap real verifiziert**: `TESTRYN_BOOTSTRAP_TOKEN` erzeugt beim ersten
+  Start einen Admin-Token; nach einem Backend-Neustart (Daten blieben im
+  Postgres-Volume erhalten) mit demselben Bootstrap-Wert wurde **kein** zweiter
+  Bootstrap-Token erzeugt (Tokens existierten bereits) — bestätigt „kein
+  Dauer-Backdoor" nicht nur im Code, sondern im echten Neustart-Verhalten.
+- **Log-Leakage real verifiziert**: `docker compose logs backend` nach Dutzenden
+  echter Requests (inkl. mehrerer 401/403) auf `testryn_` und `authorization:`
+  durchsucht — 0 Treffer.
+- **CI-Workflow-Regression (Abschnitt 31)**: Execution → Publisher →
+  `automationReference` → Bulk Results → UI, jetzt mit Auth — vollständig
+  bestätigt (siehe Workflow F).
+- **Jira-Workflow-Regression (Abschnitt 32)**: `mvn test` grün ohne Live-Jira-
+  Abhängigkeit; zusätzlich bei dieser Gelegenheit ein echter Live-Verbindungstest
+  gegen die reale Jira-Cloud-Instanz erneut erfolgreich (`Connected to Jira`) —
+  die Security-Änderungen haben die Jira-Integration nicht beeinträchtigt.
+- **OpenAPI (Abschnitt 28)**: `bearerAuth`-Security-Scheme im echten `/v3/api-docs`
+  bestätigt (`type: http, scheme: bearer`), global angewendet, kein Beispiel-Token.
+- **Copy-Safety (Abschnitt 27)**: Token-Anlage im Frontend geprüft — der neue
+  Rohwert erscheint nirgends in `localStorage`, `sessionStorage` enthält nur den
+  eigenen, bewusst gesetzten Dev-Token, sonst nichts.
+- **Ein echter UI-Bug gefunden und noch im selben Durchlauf behoben**: ein
+  abgelaufener (nicht widerrufener) Token wurde in der Service-Tokens-Tabelle
+  fälschlich als „Revoked" statt „Expired" angezeigt (`active` allein
+  unterscheidet nicht zwischen den beiden Ursachen) — korrigiert, neu gebaut,
+  erneut verifiziert.
+- **Bekannte Einschränkung dieser Verifikation**: der Revoke-Button im Frontend
+  nutzt einen nativen `window.confirm()`-Dialog, den das Browser-Automatisierungs-
+  Tool nicht zuverlässig bedienen kann (kein Netzwerk-Request beobachtbar nach
+  Klick) — die zugrunde liegende Funktionalität ist unabhängig davon sowohl per
+  echtem REST-Aufruf (Workflow D) als auch per Backend-Test
+  (`ServiceTokenManagementTest.revokeSetsRevokedAtAndDeactivatesTheToken`)
+  vollständig verifiziert; nur die UI-Interaktion selbst blieb hier ungeprüft.
 
 ## Jira Live-Verifikation — abgeschlossen
 
@@ -218,17 +332,33 @@ Docker-Compose-Stack.
 
 ## Bekannte Einschränkungen / technische Schulden (Ergänzung)
 
-- Kein Auth-/Service-Token-Mechanismus (siehe oben, Backlog → Next).
+- Kein Human User Authentication (Login/Sessions) — Service Tokens sind bewusst
+  Maschinen-Credentials, keine Personen-Identität; das Frontend nutzt bis dahin die
+  Dev-Token-Übergangslösung (siehe oben, Backlog → Next).
+- Kein API-Rate-Limiting.
+- Kein geführter Secret-Rotation-Workflow für Service Tokens (Create + Revoke
+  manuell möglich, kein eigener "Rotate"-Endpoint).
+- Der Revoke-Button im Frontend war mit dem Browser-Automatisierungstool dieser
+  Session nicht zuverlässig testbar (nativer `confirm()`-Dialog) — Funktionalität
+  anderweitig vollständig verifiziert, siehe Browser-Verifikation oben.
 - Kein JUnit-XML-/Playwright-/Cypress-/Allure-Importer (bewusst außerhalb dieses
-  Blocks, Abschnitt 33) — Architektur dafür vorbereitet (`ResultBatchReader`).
+  Blocks) — Architektur dafür vorbereitet (`ResultBatchReader`); empfohlener
+  nächster fachlicher Block.
 - `automationReference` ist nicht Teil des Test-Case-Anlage-Formulars im Frontend
-  (`NewTestCaseForm`), nur im Edit-Formular — bewusst minimal gehalten (Abschnitt
-  33); ein Test Case bekommt seine Automation-Referenz typischerweise erst, wenn die
+  (`NewTestCaseForm`), nur im Edit-Formular — bewusst minimal gehalten; ein Test
+  Case bekommt seine Automation-Referenz typischerweise erst, wenn die
   Automatisierung selbst existiert, meist nach der manuellen Erstanlage.
+- Vereinzelt beobachtete Testflakiness bei sehr schnell aufeinanderfolgenden
+  `mvn test`-Läufen in derselben Session (`System.nanoTime() % 100000` als
+  Projekt-Key-Generator in einigen älteren Testklassen, seltene Kollision) — nicht
+  sicherheitsrelevant, kein Codefix in diesem Block, bei Bedarf später auf
+  `UUID`-basierte Testschlüssel umstellen.
 
 ## Nächster sinnvoller Schritt
 
-BACKLOG.md → Next priorisieren: API-/Service-Authentication ist der logische
-nächste Schritt, jetzt wo sowohl der CI-Workflow als auch die Jira-Integration
-end-to-end gegen echte Systeme verifiziert sind, die API aber weiterhin komplett
-offen im Netzwerk steht.
+BACKLOG.md → Next: **JUnit-XML-Import-Adapter** ist der empfohlene nächste
+fachliche Block — die Architektur ist bereits vorbereitet (`ResultBatchReader` im
+Publisher, ADR 0011), und mit Bulk-API, `automationReference` und jetzt
+Authentifizierung steht die gesamte CI-Kette produktionsnah. Human User
+Authentication bleibt der nächste *Security*-Block, sobald ein konkreter Bedarf
+für Personen- statt Maschinen-Identität entsteht.
