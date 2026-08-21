@@ -3,54 +3,54 @@
 Strukturierter Produktbacklog. `Now` = aktueller Meilenstein, `Next` = danach
 sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 
-## Now (CI-/Automations-Workflow, siehe PROJECT_STATUS.md)
+## Now (API & Service Security, siehe PROJECT_STATUS.md)
 
-- [x] Atomarer Bulk-Result-Update-Endpoint (`PATCH /executions/{id}/results`),
-      resultId/automationReference-Dual-Mode, strukturierte Fehler, ADR 0010
-- [x] `automationReference`-Feld auf Test Case: optional, projektweit eindeutig,
-      maschinenfreundlich, exakte Suche, Duplikat-Schutz, ADR 0009
-- [x] Execution-Mapping: automationReference wird nur innerhalb der jeweiligen
-      Execution aufgelöst, nie projektweit, nie mit automatischer Anlage
-- [x] `tools/testryn-publisher`: eigenständiges CLI-Tool (Java/Maven, ein
-      Production-Dependency), Publisher-Core getrennt von Input-Format/HTTP-Transport
-      für spätere Importer (z. B. JUnit-XML), ADR 0011
-- [x] `docs/ci-integration.md`: vollständiger End-to-End-Workflow mit Beispielen
-- [x] REST-API-Auth für CI geprüft, bewusst zurückgestellt statt erzwungen (siehe
-      Next) — Publisher sendet bereits einen Bearer-Token, falls konfiguriert
-- [x] Frontend: `automationReference` sichtbar/editierbar auf der Test-Case-Seite
-      (minimal, gezielt, Abschnitt 33)
-- [x] Browser-Verifikation Workflows A–E (A blockiert durch fehlende
-      Live-Jira-Credentials, dokumentiert; B–E vollständig verifiziert, inkl.
-      echtem Lauf des gebauten Publisher-Jars gegen die laufende Instanz)
-- [ ] **Live-Jira-Verifikation (Abschnitt 3)** — nicht durchgeführt, keine
-      Zugangsdaten in dieser Umgebung verfügbar; benötigte Environment Variables
-      und der auszuführende Workflow sind in PROJECT_STATUS.md dokumentiert
+- [x] Service-Token-Authentifizierung für die gesamte REST-API (Bearer Token,
+      stateless, Spring Security), ADR 0012
+- [x] Scopes `testryn:read` / `testryn:write` / `testryn:admin` mit klaren
+      Implikationsregeln (write ⊇ read, admin ⊇ write ⊇ read + Token-Verwaltung)
+- [x] Token-Verwaltungs-API (`/api/v1/service-tokens`, Create/List/Get/Revoke),
+      Rohwert nur einmalig bei Erstellung zurückgegeben
+- [x] Bootstrap über `TESTRYN_BOOTSTRAP_TOKEN` (nur beim allerersten Start ohne
+      bestehende Tokens, danach dauerhaft wirkungslos — kein Backdoor)
+- [x] SHA-256-Hashing-Strategie für Token-Secrets (dokumentierte Entscheidung gegen
+      eine Passwort-KDF, ADR 0012)
+- [x] CI-Publisher: Auth vollständig verifiziert (401/403/Erfolg), Token weiterhin
+      nur über `TESTRYN_API_TOKEN`, nie als CLI-Argument
+- [x] Frontend: minimale, ehrlich gekennzeichnete Dev-Token-Übergangslösung
+      (sessionStorage, kein Bundle/localStorage), Service-Token-Verwaltungs-UI
+- [x] `docs/security.md` (neu), `docs/ci-integration.md` um Auth erweitert
+- [x] Bestehende Test-Suite auf Auth umgestellt (Standard-Admin-Token je Testlauf),
+      alle bisherigen Regressionstests weiterhin grün
 
 ## Next
 
-- **API-/Service-Authentication** — jetzt der logische nächste Schritt: der
-  CI-Workflow funktioniert produktionsnah, aber die API steht komplett offen im
-  Netzwerk. Ein einfacher statischer Service-Token wurde geprüft und bewusst
-  zurückgestellt (ADR 0011) — echte Architekturarbeit (Scope: alle Endpoints vs. nur
-  schreibende, Verhältnis zu einer künftigen Nutzerverwaltung), keine Ad-hoc-Lösung.
-- **JUnit-XML-Import-Adapter** — Architektur bereits vorbereitet
-  (`ResultBatchReader` im Publisher, Abschnitt 17); noch nicht gebaut (Abschnitt 33).
+- **Human User Authentication** (Login, Sessions) — bewusst nicht in diesem Block
+  (Abschnitt 9/36); Service Tokens sind explizit Maschinen-Credentials, keine
+  Personen-Identität. Das Frontend braucht bis dahin weiterhin die
+  Dev-Token-Übergangslösung aus diesem Block.
+- **JUnit-XML-Import-Adapter** — empfohlener nächster *fachlicher* Block
+  (Abschnitt 40): Architektur bereits vorbereitet (`ResultBatchReader` im Publisher,
+  ADR 0011), noch nicht gebaut.
+- **API-Rate-Limiting** — noch nicht nötig, aber jetzt, wo Requests einem Token
+  zugeordnet sind, technisch einfacher anzuschließen als vorher.
+- **Secret Rotation** für Service Tokens (z. B. "neuen Token erzeugen, alten erst
+  nach Umstellung widerrufen" als geführter Workflow statt zweier manueller
+  Schritte) — aktuell manuell über Create + Revoke möglich, kein eigener Workflow.
 - **Jira OAuth 2.0** — `JiraAuthType.OAUTH2` existiert bereits als Enum-Wert.
 - **Jira Forge App** — Vorbereitung konkretisiert (siehe Later), noch nicht gebaut.
+- **RBAC über die drei Service-Token-Scopes hinaus** — bewusst nicht in diesem Block
+  (Abschnitt 36); erst bei konkretem Bedarf (z. B. projektspezifische Tokens).
 - **Result-Audit-History** — Statusübergangs-Historie (voriger/neuer Status,
-  Zeitstempel, optional Executor/Kommentar); fachlich einfach vorbereitbar, aber
-  ohne Auth-/User-Modell nur eingeschränkt wertvoll.
-- **Live-Jira-Verifikation nachholen**, sobald Zugangsdaten verfügbar sind (siehe
-  PROJECT_STATUS.md für die genauen Environment Variables und den Workflow).
-- **CI-Pipeline-Beispiele** (GitHub Actions, GitLab CI) gegen den jetzt fertigen
-  Publisher/Bulk-API-Workflow.
+  Zeitstempel, optional Executor/Kommentar); mit Service Tokens jetzt zumindest ein
+  Akteur (Token-Name) bekannt, aber weiterhin keine Personen-Identität dahinter.
+- **CI-Pipeline-Beispiele** (GitHub Actions, GitLab CI) inkl. Token-Handling über
+  Secret Stores, gegen den jetzt authentifizierten Publisher/Bulk-API-Workflow.
 - **Evidence/Attachments pro Result** — `Report` müsste um eine optionale Referenz auf
   `ExecutionResult` erweitert werden (aktuell nur an `Execution` gehängt); UI bräuchte
   Upload je Test Case statt nur je Execution.
 - **Build-URL / Commit-SHA an Execution Results** — sinnvolle Ergänzung zu
-  `executor`, sobald ein CI-Anwendungsfall das konkret braucht (Abschnitt 19: "nicht
-  in diesem Block überladen").
-- **Einfache rollenbasierte Berechtigungen** (Reader/Editor je Projekt)
+  `executor`, sobald ein CI-Anwendungsfall das konkret braucht.
 - **Dashboard-Analytics** — Trend über Zeit (Pass-Rate je Woche/Monat), bewusst nicht
   in diesem Block, um „komplexe BI-Dashboards" (explizit ausgeschlossen) nicht
   versehentlich zu bauen.
@@ -60,7 +60,7 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 - Weitere Export-Formate: Excel
 - Kommentare/Erwähnungen an Execution Results
 - `automationReference` im Test-Case-Anlage-Formular des Frontends (aktuell nur im
-  Edit-Formular, siehe PROJECT_STATUS.md — bewusst minimal in diesem Block)
+  Edit-Formular)
 
 ## Later (bewusst Out-of-Scope für dieses Produktstadium)
 
@@ -68,16 +68,17 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
   kapselt) — erst sinnvoll, wenn reale Pipeline-Nutzung Muster zeigt.
 - **Report-Importer für JUnit-XML, TestNG, Playwright, Cypress, Allure**
   (automatische Ergebnis-Interpretation) — Architektur vorbereitet (siehe Next:
-  JUnit-XML-Adapter zuerst), aber alle Parser bewusst außerhalb dieses Blocks
-  (Abschnitt 33).
+  JUnit-XML-Adapter zuerst), aber alle Parser bewusst außerhalb dieses Blocks.
 - **Jira Forge App** — die REST-API liefert bereits alles Nötige
   (`GET /test-cases/{id}/requirements`, `GET /projects/{key}/requirements`,
   Execution-Status/Progress-Endpoints für PASS/FAIL/Coverage) — eine spätere
-  Forge-App bräuchte keinen Architekturumbau, nur die App selbst.
+  Forge-App bräuchte keinen Architekturumbau, nur die App selbst (inkl. eines
+  eigenen Service Tokens für ihr Backend, siehe ADR 0012).
+- **SSO / SAML / LDAP** — erst relevant, sobald Human User Authentication selbst
+  ansteht.
 - Eigener MCP Server für Testryn
 - Komplexe AI-Engine / automatische Testgenerierung im Backend
 - Weitere Requirement-Provider: GitHub Issues, Azure DevOps
-- LDAP / SAML / Enterprise SSO
 - Multi-Tenancy-SaaS, Billing
 - Kubernetes-Betrieb
 - Komplexe Dashboards / BI-Auswertungen
