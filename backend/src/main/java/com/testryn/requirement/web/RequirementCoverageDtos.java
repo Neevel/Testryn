@@ -39,18 +39,23 @@ public final class RequirementCoverageDtos {
     ) {
     }
 
-    /** {@code status/actualResult/failureDetails} only -- no comment/executor/
-     * executedAt at the step level here (Abschnitt 26: "Response nicht unnötig
-     * gigantisch machen"); the panel's step display (Abschnitt 29/30) never shows
-     * those for a step anyway. */
+    /** No {@code executor}/{@code executedAt} at the step level here (Abschnitt 26:
+     * "Response nicht unnötig gigantisch machen") -- the panel's step display never
+     * shows those for an individual step. {@code comment} was added in the Forge
+     * Panel UX Refinement block, deliberately additive and narrow: it is the only
+     * field carrying a human-written reason for a BLOCKED step (the same field the
+     * Runner already writes to, e.g. "environment down"), and the panel has nowhere
+     * else to read that from (Abschnitt 17/31 -- no domain/migration/aggregation
+     * change, one existing field exposed on one existing read DTO). */
     public record CoverageStepResultResponse(
             ExecutionResultStatus status,
             String actualResult,
-            String failureDetails
+            String failureDetails,
+            String comment
     ) {
         public static CoverageStepResultResponse from(com.testryn.execution.domain.ExecutionStepResult stepResult) {
             return new CoverageStepResultResponse(stepResult.getStatus(), stepResult.getActualResult(),
-                    stepResult.getFailureDetails());
+                    stepResult.getFailureDetails(), stepResult.getComment());
         }
     }
 

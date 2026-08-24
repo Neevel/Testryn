@@ -233,6 +233,36 @@ class RequirementCoverageTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void latestExecutionIncludesTheCommentForABlockedStep() throws Exception {
+        // Forge Panel UX Refinement block: comment is the only field carrying a
+        // BLOCKED reason (the same field the Runner already writes to).
+        String testCaseId = createTestCase("Payment gateway");
+        linkRequirement(testCaseId, "EVAL-75");
+        JsonNode execution = postJson("/api/v1/projects/" + projectKey + "/executions", """
+                {"name":"Regression","testCaseIds":["%s"]}
+                """.formatted(testCaseId), 201);
+        String executionId = execution.get("id").asText();
+        String stepResultId = execution.get("testCases").get(0).get("steps").get(0)
+                .get("result").get("id").asText();
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .patch("/api/v1/executions/{eid}/step-results/{sid}", executionId, stepResultId)
+                        .contentType("application/json")
+                        .content("""
+                                {"status":"BLOCKED","comment":"environment down"}
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/requirement-links/coverage")
+                        .param("provider", "jira")
+                        .param("externalKey", "EVAL-75"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.testCases[0].latestExecution.steps[0].result.status").value("BLOCKED"))
+                .andExpect(jsonPath("$.testCases[0].latestExecution.steps[0].result.comment")
+                        .value("environment down"));
+    }
+
+    @Test
     void aFreshExecutionReportsNotRunStepsRatherThanOmittingThem() throws Exception {
         String testCaseId = createTestCase("Never touched");
         linkRequirement(testCaseId, "EVAL-72");
