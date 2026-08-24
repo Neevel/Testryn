@@ -1,0 +1,62 @@
+# Testryn Jira Forge Issue Panel -- see docs/jira-forge-integration.md and
+# ADR 0014 for the full architecture and setup rationale.
+#
+# `app.id` below is a placeholder. Run `forge register` (or `forge create` for a
+# brand-new app registration) once, authenticated as the Atlassian account that will
+# own this app, and it will rewrite this value to a real
+# `ari:cloud:ecosystem::app/<uuid>` -- never hand-edit it otherwise.
+app:
+  id: ari:cloud:ecosystem::app/00000000-0000-0000-0000-000000000000
+  runtime:
+    name: nodejs22.x
+
+modules:
+  jira:issuePanel:
+    - key: testryn-coverage-panel
+      resource: main
+      render: native
+      resolver:
+        function: resolver
+      title: Testryn
+      # Reuses frontend/public/favicon.svg's exact signet (Abschnitt 26 -- small,
+      # not a marketing surface) via the "icon" resource declared below.
+      icon: resource:icon;icon.svg
+
+  function:
+    - key: resolver
+      handler: resolvers/index.handler
+
+resources:
+  - key: main
+    path: src/frontend/index.jsx
+  - key: icon
+    path: static
+
+# No Jira scopes requested: the panel only ever needs the current issue's own key,
+# which useProductContext() already provides for free (Abschnitt 29) -- it never
+# calls the Jira REST API itself. Read-only by design (Abschnitt 4/47): no write
+# scope exists anywhere in this manifest because this MVP performs no writes, to
+# Jira or to Testryn.
+permissions:
+  scopes: []
+  external:
+    fetch:
+      backend:
+        # Live-verification tunnel (Abschnitt 10 -- Forge Cloud cannot reach a
+        # developer's own localhost): a cloudflared quick tunnel to the local
+        # docker-compose backend, opened for this block's live verification.
+        # Ephemeral -- replace with your own tunnel/deployment host if this one has
+        # since expired. See docs/jira-forge-integration.md, "Localhost problem".
+        - 'https://temporarily-mating-kodak-sources.trycloudflare.com'
+
+# TESTRYN_API_BASE_URL / TESTRYN_APP_BASE_URL are plain (non-secret) config -- just
+# URLs, safe to default and to see in `forge variables list`. TESTRYN_API_TOKEN is
+# NOT declared here: encrypted variables are set directly via
+# `forge variables set --encrypt`, never given a default or written to this file
+# (Abschnitt 8/36 -- a token must never appear in source control).
+environment:
+  variables:
+    - key: TESTRYN_API_BASE_URL
+      default: 'http://localhost:8080'
+    - key: TESTRYN_APP_BASE_URL
+      default: 'http://localhost:3000'

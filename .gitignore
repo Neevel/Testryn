@@ -14,6 +14,11 @@ frontend/*.tsbuildinfo
 frontend/vite.config.js
 frontend/vite.config.d.ts
 
+# Jira Forge app (integrations/jira-forge)
+integrations/jira-forge/node_modules/
+integrations/jira-forge/.forge/
+integrations/jira-forge/dist/
+
 # Env / secrets
 .env
 .env.*
