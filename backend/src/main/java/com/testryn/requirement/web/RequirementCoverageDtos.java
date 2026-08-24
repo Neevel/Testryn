@@ -39,21 +39,66 @@ public final class RequirementCoverageDtos {
     ) {
     }
 
+    /** {@code status/actualResult/failureDetails} only -- no comment/executor/
+     * executedAt at the step level here (Abschnitt 26: "Response nicht unnötig
+     * gigantisch machen"); the panel's step display (Abschnitt 29/30) never shows
+     * those for a step anyway. */
+    public record CoverageStepResultResponse(
+            ExecutionResultStatus status,
+            String actualResult,
+            String failureDetails
+    ) {
+        public static CoverageStepResultResponse from(com.testryn.execution.domain.ExecutionStepResult stepResult) {
+            return new CoverageStepResultResponse(stepResult.getStatus(), stepResult.getActualResult(),
+                    stepResult.getFailureDetails());
+        }
+    }
+
+    /** The step as it actually was in the latest execution's own pinned snapshot
+     * (Abschnitt 22: the execution-level snapshot stays authoritative for history),
+     * together with its result -- distinct from {@link CoverageStepResponse}, which
+     * is the test case's CURRENT steps with no result at all, used as a preview when
+     * a test case has no execution yet (Abschnitt 17). */
+    public record LatestExecutionStepResponse(
+            int position,
+            String action,
+            String expectedResult,
+            CoverageStepResultResponse result
+    ) {
+        public static LatestExecutionStepResponse from(com.testryn.execution.domain.ExecutionStepResult stepResult) {
+            var step = stepResult.getStep();
+            return new LatestExecutionStepResponse(step.getStepOrder(), step.getAction(), step.getExpectedResult(),
+                    CoverageStepResultResponse.from(stepResult));
+        }
+    }
+
     public record LatestExecutionResponse(
             UUID executionId,
             String executionName,
             ExecutionResultStatus status,
             Instant executedAt,
-            Long durationMs
+            Long durationMs,
+            String executor,
+            /** Empty for an execution that predates the Step-Level Execution
+             * Results block (ADR 0015) -- never fabricated (Abschnitt 35/36), and
+             * for a JUnit-imported result specifically (Abschnitt 20/36: automation
+             * without step reporting stays testcase-level only). */
+            List<LatestExecutionStepResponse> steps
     ) {
         public static LatestExecutionResponse from(ExecutionTestCase etc) {
             var result = etc.getResult();
+            List<LatestExecutionStepResponse> steps = etc.getStepResults().stream()
+                    .sorted(java.util.Comparator.comparingInt(sr -> sr.getStep().getStepOrder()))
+                    .map(LatestExecutionStepResponse::from)
+                    .toList();
             return new LatestExecutionResponse(
                     etc.getExecution().getId(),
                     etc.getExecution().getName(),
                     result.getStatus(),
                     result.getExecutedAt(),
-                    result.getDurationMs()
+                    result.getDurationMs(),
+                    result.getExecutor(),
+                    steps
             );
         }
     }

@@ -26,11 +26,24 @@ public interface ExecutionTestCaseRepository extends JpaRepository<ExecutionTest
      * instant, more than one row could come back for that test case; callers should
      * treat the first one they see as authoritative and ignore the rest.
      */
+    /**
+     * Also fetch-joins {@code stepResults} and each one's {@code step} (Abschnitt
+     * 24/25: the Jira Forge coverage view needs step-level detail for the latest
+     * execution too, still in this same single query). Deliberately does NOT also
+     * join {@code testCaseVersion.steps} -- that is a second Hibernate "bag"
+     * collection alongside {@code stepResults} and would throw
+     * MultipleBagFetchException; every step's action/expectedResult is available
+     * via {@code stepResult.getStep()} instead (the same {@link
+     * com.testryn.testcase.domain.TestStep} row, reached through the result rather
+     * than through the version), so nothing is actually lost.
+     */
     @Query("""
             select etc from ExecutionTestCase etc
             join fetch etc.execution e
             join fetch etc.testCase tc
             left join fetch etc.result r
+            left join fetch etc.stepResults sr
+            left join fetch sr.step
             where tc.id in :testCaseIds
             and e.createdAt = (
                 select max(etc2.execution.createdAt)

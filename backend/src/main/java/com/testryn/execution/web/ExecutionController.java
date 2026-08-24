@@ -121,6 +121,50 @@ public class ExecutionController {
         return BulkResultUpdateResponse.from(updated);
     }
 
+    @Operation(
+            summary = "Partially update one step result (JSON Merge Patch, RFC 7396)",
+            description = """
+                    Same merge-patch semantics as the testcase-level result PATCH, one level deeper
+                    (ADR 0015). After applying, the owning test case's testcase-level status is
+                    automatically re-derived from all of its step results (Abschnitt 9) -- any
+                    comment/duration already on that testcase-level result is left untouched, only its
+                    `status` (and `executedAt`) change. Rejected with 409 if the execution is COMPLETED
+                    or ABORTED (Abschnitt 50).
+                    """
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            required = true,
+            content = @Content(schema = @Schema(implementation = StepResultPatchRequest.class))
+    )
+    @PatchMapping(value = "/api/v1/executions/{executionId}/step-results/{stepResultId}", consumes = "application/json")
+    public StepResultResponse updateStepResult(@PathVariable UUID executionId, @PathVariable UUID stepResultId,
+                                                @RequestBody JsonNode patch) {
+        var stepResult = executionService.patchStepResult(executionId, stepResultId, patch);
+        return StepResultResponse.from(stepResult);
+    }
+
+    @Operation(
+            summary = "Bulk-update multiple step results in one atomic request",
+            description = """
+                    Same JSON Merge Patch semantics as the single step-result PATCH, applied to every
+                    entry in `results`. Each entry identifies its target by `stepResultId` alone --
+                    the id already returned by every read of an execution's step results. Atomic: if
+                    any entry fails validation (unknown/duplicate stepResultId, invalid status, ...),
+                    the entire request is rejected and nothing is changed. Every distinct test case
+                    touched has its testcase-level status re-derived once, after all step writes are
+                    applied. Rejected with 409 if the execution is COMPLETED or ABORTED (Abschnitt 50).
+                    """
+    )
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            required = true,
+            content = @Content(schema = @Schema(implementation = BulkStepResultUpdateRequest.class))
+    )
+    @PatchMapping(value = "/api/v1/executions/{executionId}/step-results", consumes = "application/json")
+    public BulkStepResultUpdateResponse bulkUpdateStepResults(@PathVariable UUID executionId, @RequestBody JsonNode body) {
+        var updated = executionService.bulkPatchStepResults(executionId, body);
+        return BulkStepResultUpdateResponse.from(updated);
+    }
+
     private ExecutionStatus parseStatus(String value) {
         if (value == null) {
             throw new BadRequestException("status is required");

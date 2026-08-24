@@ -4,14 +4,19 @@ import com.testryn.execution.domain.Execution;
 import com.testryn.execution.domain.ExecutionResult;
 import com.testryn.execution.domain.ExecutionResultStatus;
 import com.testryn.execution.domain.ExecutionStatus;
+import com.testryn.execution.domain.ExecutionStepResult;
 import com.testryn.execution.domain.ExecutionTestCase;
 import com.testryn.testcase.domain.TestCaseVersion;
+import com.testryn.testcase.domain.TestStep;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public final class ExecutionDtos {
 
@@ -69,6 +74,69 @@ public final class ExecutionDtos {
     public record BulkResultUpdateRequest(
             @NotEmpty List<BulkResultPatchItemRequest> results
     ) {
+    }
+
+    /**
+     * Documents the JSON Merge Patch request shape for a single step result for
+     * springdoc -- the controller binds the raw {@code JsonNode}, same reason as
+     * {@link ExecutionResultPatchRequest} (ADR 0006/0015). No {@code durationMs}:
+     * not a step-level field (Abschnitt 5).
+     */
+    public record StepResultPatchRequest(
+            ExecutionResultStatus status,
+            String actualResult,
+            String comment,
+            String failureDetails,
+            String executor
+    ) {
+    }
+
+    /** Documents one bulk step-result-update entry for springdoc (Abschnitt 19) --
+     * addressed by {@code stepResultId} alone, the id every read of an execution's
+     * step results already returns. */
+    public record BulkStepResultPatchItemRequest(
+            UUID stepResultId,
+            ExecutionResultStatus status,
+            String actualResult,
+            String comment,
+            String failureDetails,
+            String executor
+    ) {
+    }
+
+    public record BulkStepResultUpdateRequest(
+            @NotEmpty List<BulkStepResultPatchItemRequest> results
+    ) {
+    }
+
+    public record StepResultResponse(
+            UUID id,
+            ExecutionResultStatus status,
+            String actualResult,
+            String comment,
+            String failureDetails,
+            Instant executedAt,
+            String executor
+    ) {
+        public static StepResultResponse from(ExecutionStepResult stepResult) {
+            return new StepResultResponse(
+                    stepResult.getId(),
+                    stepResult.getStatus(),
+                    stepResult.getActualResult(),
+                    stepResult.getComment(),
+                    stepResult.getFailureDetails(),
+                    stepResult.getExecutedAt(),
+                    stepResult.getExecutor()
+            );
+        }
+    }
+
+    public record BulkStepResultUpdateResponse(
+            List<StepResultResponse> results
+    ) {
+        public static BulkStepResultUpdateResponse from(List<ExecutionStepResult> updated) {
+            return new BulkStepResultUpdateResponse(updated.stream().map(StepResultResponse::from).toList());
+        }
     }
 
     /** Superset of {@link ExecutionResultResponse} purpose-built for the bulk
@@ -139,11 +207,16 @@ public final class ExecutionDtos {
     /** Mirrors {@code com.testryn.testcase.web.TestCaseDtos.StepResponse} on
      * purpose -- the execution module reads the pinned {@link TestCaseVersion}'s
      * own steps, not the testcase module's current ones, and should not depend on
-     * another module's web-layer DTOs (module boundaries, AGENTS.md). */
+     * another module's web-layer DTOs (module boundaries, AGENTS.md). {@code result}
+     * is {@code null} for an execution created before the Step-Level Execution
+     * Results block (ADR 0015) -- no step results were ever backfilled for old
+     * executions (Abschnitt 37), so callers must treat {@code null} as "not
+     * available for this execution", not as NOT_RUN. */
     public record ExecutionStepResponse(
             int order,
             String action,
-            String expectedResult
+            String expectedResult,
+            StepResultResponse result
     ) {
     }
 
@@ -160,6 +233,11 @@ public final class ExecutionDtos {
     ) {
         public static ExecutionTestCaseResponse from(ExecutionTestCase etc) {
             TestCaseVersion version = etc.getTestCaseVersion();
+            Map<UUID, ExecutionStepResult> stepResultsByStepId = etc.getStepResults().stream()
+                    .collect(Collectors.toMap(sr -> sr.getStep().getId(), Function.identity()));
+            List<ExecutionStepResponse> steps = version.getSteps().stream()
+                    .map(s -> toStepResponse(s, stepResultsByStepId.get(s.getId())))
+                    .toList();
             return new ExecutionTestCaseResponse(
                     etc.getTestCase().getId(),
                     etc.getTestCase().getHumanId(),
@@ -167,12 +245,15 @@ public final class ExecutionDtos {
                     version.getTitle(),
                     version.getDescription(),
                     version.getPreconditions(),
-                    version.getSteps().stream()
-                            .map(s -> new ExecutionStepResponse(s.getStepOrder(), s.getAction(), s.getExpectedResult()))
-                            .toList(),
+                    steps,
                     etc.getPosition(),
                     ExecutionResultResponse.from(etc.getResult())
             );
+        }
+
+        private static ExecutionStepResponse toStepResponse(TestStep step, ExecutionStepResult stepResult) {
+            return new ExecutionStepResponse(step.getStepOrder(), step.getAction(), step.getExpectedResult(),
+                    stepResult == null ? null : StepResultResponse.from(stepResult));
         }
     }
 

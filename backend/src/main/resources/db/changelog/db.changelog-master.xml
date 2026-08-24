@@ -10,5 +10,6 @@
     <include file="db/changelog/changes/0003-requirement-link-metadata.sql" relativeToChangelogFile="false"/>
     <include file="db/changelog/changes/0004-test-case-automation-reference.sql" relativeToChangelogFile="false"/>
     <include file="db/changelog/changes/0005-service-tokens.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/changes/0006-execution-step-results.sql" relativeToChangelogFile="false"/>
 
 </databaseChangeLog>
