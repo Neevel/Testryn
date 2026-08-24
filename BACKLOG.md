@@ -48,6 +48,9 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
       iframe), Resolver hält den Service Token, nie der Browser
 - [x] Alle fünf Panel-Zustände (Loading/Ok/Empty/Unavailable/Unauthorized), Status
       immer Text+Icon+Farbe, Coverage-Summary aus echten Daten
+- [x] Verlinkte Test Cases als standardmäßig geschlossene, unabhängig öffnbare
+      Accordions; Steps im geöffneten Zustand als Jira-native Tabelle mit
+      Definition, Result/Actual und einklappbaren Failure Details
 - [x] `docs/jira-forge-integration.md`, ADR 0014
 - [x] 13 Backend- + 15 Forge-Tests grün; Backend-Erreichbarkeit real per
       `cloudflared`-Tunnel verifiziert
@@ -57,9 +60,10 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
       nachgeholt
 - [ ] **Weiterhin offen**: Empty-State an einem unverlinkten Issue,
       simulierte Testryn-Downtime im echten Panel, tatsächliche visuelle
-      Browser-Kontrolle des Panels (kein angemeldeter Atlassian-Browser in der
-      Session verfügbar) — Coverage-Daten dafür sind live bestätigt, nur die
-      UI-Interaktion selbst blieb ungeprüft.
+      Browser-Kontrolle des Accordion-/Tabellen-Panels auf EVAL-47 einschließlich
+      Wide/Narrow und Dark Mode (kein angemeldeter Atlassian-Browser in der Session
+      verfügbar) — Deployment/Installation und Coverage-Daten sind live bestätigt,
+      nur die UI-Interaktion selbst blieb ungeprüft.
 
 ## Now (Step-Level Execution Results, siehe PROJECT_STATUS.md)
 

@@ -1,280 +1,156 @@
 import React, { useState } from "react";
-import { Box, Button, Icon, Inline, Link, Lozenge, Stack, Text } from "@forge/react";
+import { Box, Button, DynamicTable, Icon, Inline, Link, Lozenge, Stack, Text, xcss } from "@forge/react";
 import { statusMeta } from "./statusMeta";
-import { executorLabel, formatDate, getFailedOrBlockedSteps, isAttentionStatus, summarizeSteps, truncate } from "./coverageView";
+import { executorLabel, formatDate, summarizeSteps, truncate } from "./coverageView";
 
-const FAILURE_DETAILS_PREVIEW_LENGTH = 160;
-const PRECONDITIONS_PREVIEW_LENGTH = 160;
+const PREVIEW_LENGTH = 160;
+const cardStyles = xcss({ borderColor: "color.border", borderStyle: "solid", borderWidth: "border.width", borderRadius: "border.radius.200" });
+const failedStyles = xcss({ backgroundColor: "color.background.danger", borderRadius: "border.radius.100", padding: "space.075" });
 
-/**
- * One linked test case (Forge Panel UX Refinement block). "Summary first, failure
- * first, details on demand": the compact summary below is always fully visible with
- * zero clicks -- id/title, status/priority/version, execution source/date, step
- * counts, and (if the run failed or was blocked) an inline mini-summary of the
- * first such step, with no separate "expand" click needed to see what actually
- * broke. Full step detail (either "failed only" or "all steps") is opt-in via
- * explicit buttons, and collapses cleanly back to the summary. Nothing here ever
- * triggers another Testryn request -- the coverage response already has everything.
- */
+/** Independent, default-collapsed accordion. Each instance owns its state, so
+ * several tests can remain open for comparison. */
 export function TestCaseCard({ testCase, appBaseUrl }) {
-  const [mode, setMode] = useState("summary"); // "summary" | "failedOnly" | "all"
+  const [expanded, setExpanded] = useState(false);
   const latest = testCase.latestExecution;
-  const meta = latest ? statusMeta(latest.status) : null;
-  const steps = latest && latest.steps && latest.steps.length > 0 ? latest.steps : null;
-  const stepSummary = summarizeSteps(steps);
-  const failedOrBlocked = getFailedOrBlockedSteps(steps);
-  const firstFailure = failedOrBlocked[0] ?? null;
+  const executionSteps = latest?.steps?.length > 0 ? latest.steps : null;
 
   return (
-    <Box padding="space.100">
+    <Box padding="space.100" xcss={cardStyles}>
       <Stack space="space.100">
-        <CardHeader testCase={testCase} />
-
-        {latest ? (
-          <Stack space="space.050">
-            <Inline space="space.050" alignBlock="center">
-              <Icon glyph={meta.glyph} label={meta.label} color={meta.color} />
-              <Lozenge appearance={meta.appearance}>{meta.label}</Lozenge>
-            </Inline>
-            <Inline space="space.050" alignBlock="center">
-              <ExecutorLabel executor={latest.executor} />
-              <Text size="small" color="color.text.subtlest">{formatDate(latest.executedAt)}</Text>
-            </Inline>
-            {latest.executionName ? (
-              <Text size="small" color="color.text.subtlest">{latest.executionName}</Text>
-            ) : null}
-            {stepSummary ? <StepCountsLine summary={stepSummary} /> : (
-              <Text size="small" color="color.text.subtlest">
-                Step-level results not reported by this automation source.
-              </Text>
-            )}
-          </Stack>
-        ) : (
-          <Text size="small" color="color.text.subtlest">No execution yet</Text>
-        )}
-
-        {mode === "summary" && firstFailure ? <InlineFailureSummary step={firstFailure} /> : null}
-
-        {mode !== "summary" ? (
-          <ExpandedSteps
-            testCase={testCase}
-            steps={mode === "failedOnly" ? failedOrBlocked : steps}
-          />
-        ) : null}
-
-        <ActionRow
-          mode={mode}
-          setMode={setMode}
-          hasSteps={steps !== null}
-          failedOrBlockedCount={failedOrBlocked.length}
-        />
-
-        <Inline space="space.200">
-          <Link href={`${appBaseUrl}/test-cases/${testCase.id}`} openNewTab>
-            Open in Testryn
-          </Link>
-          {latest ? (
-            <Link href={`${appBaseUrl}/executions/${latest.executionId}`} openNewTab>
-              Open execution
-            </Link>
-          ) : null}
-        </Inline>
-      </Stack>
-    </Box>
-  );
-}
-
-/** Technical id and title deliberately on separate lines with different weight
- * (Abschnitt 8) -- previously a single "id  title" line read as one run-on phrase. */
-function CardHeader({ testCase }) {
-  return (
-    <Stack space="space.025">
-      <Text size="small" color="color.text.subtlest">{testCase.humanId}</Text>
-      <Text weight="bold">{testCase.title}</Text>
-      <Text size="small" color="color.text.subtlest">
-        {testCase.status} · {testCase.priority} · v{testCase.version}
-      </Text>
-    </Stack>
-  );
-}
-
-/** Abschnitt 19: plain compact text, not a badge. */
-function ExecutorLabel({ executor }) {
-  const label = executorLabel(executor);
-  if (!label) return null;
-  return <Text size="small" color="color.text.subtlest">{label} ·</Text>;
-}
-
-/** Abschnitt 10: "N ✓ · N ✕ · N !" style -- compact, and only the buckets that are
- * actually non-zero are shown, so a fully green run reads as one short segment
- * rather than a row of zeroes. */
-function StepCountsLine({ summary }) {
-  const segments = [];
-  if (summary.passed) segments.push(`${summary.passed} ✓`);
-  if (summary.failed) segments.push(`${summary.failed} ✕`);
-  if (summary.blocked) segments.push(`${summary.blocked} !`);
-  if (summary.notRun) segments.push(`${summary.notRun} ○`);
-  if (summary.skipped) segments.push(`${summary.skipped} –`);
-  return <Text size="small">{segments.join(" · ")}</Text>;
-}
-
-/** Abschnitt 4/34: visible with zero clicks whenever the run failed or was
- * blocked -- the whole point of "failure first". Only the FIRST such step; the
- * "Show failed only" action reveals the rest, if there are more. */
-function InlineFailureSummary({ step }) {
-  const meta = statusMeta(step.result.status);
-  return (
-    <Box padding="space.100">
-      <Stack space="space.050">
-        <Inline space="space.050" alignBlock="center">
-          <Icon glyph={meta.glyph} label={meta.label} color={meta.color} />
-          <Text weight="bold" size="small">
-            {step.result.status === "FAILED" ? "Failed" : "Blocked"} at Step {step.position}
-          </Text>
-        </Inline>
-        <Text size="small">{step.action}</Text>
-        <Field label="EXPECTED" value={step.expectedResult} compact />
-        {step.result.actualResult ? <Field label="ACTUAL" value={step.result.actualResult} compact /> : null}
-        {step.result.status === "BLOCKED" && step.result.comment ? (
-          <Field label="REASON" value={step.result.comment} compact />
-        ) : null}
-      </Stack>
-    </Box>
-  );
-}
-
-function ActionRow({ mode, setMode, hasSteps, failedOrBlockedCount }) {
-  if (!hasSteps) return null;
-
-  if (mode === "summary") {
-    return (
-      <Inline space="space.100">
-        {/* Redundant with the inline summary when there's exactly one attention
-         * step -- only offered when it would reveal something new. */}
-        {failedOrBlockedCount > 1 ? (
-          <Button appearance="link" onClick={() => setMode("failedOnly")}>
-            Show failed only
-          </Button>
-        ) : null}
-        <Button appearance="link" onClick={() => setMode("all")}>
-          Show all steps
+        <Button appearance="subtle" iconBefore={expanded ? "chevron-down" : "chevron-right"}
+          onClick={() => setExpanded((current) => !current)} shouldFitContainer>
+          {testCase.humanId}
         </Button>
-      </Inline>
-    );
+        <Text weight="bold">{testCase.title}</Text>
+        <Summary testCase={testCase} stepSummary={summarizeSteps(executionSteps)} />
+        {expanded ? <Details testCase={testCase} appBaseUrl={appBaseUrl} executionSteps={executionSteps} /> : null}
+      </Stack>
+    </Box>
+  );
+}
+
+function Summary({ testCase, stepSummary }) {
+  const latest = testCase.latestExecution;
+  const parts = [testCase.priority, `v${testCase.version}`];
+  if (latest) {
+    if (executorLabel(latest.executor)) parts.push(executorLabel(latest.executor));
+    if (latest.executedAt) parts.push(formatDate(latest.executedAt));
   }
-
   return (
-    <Inline space="space.100">
-      <Button appearance="link" onClick={() => setMode("summary")}>
-        Collapse
-      </Button>
-      {mode === "failedOnly" ? (
-        <Button appearance="link" onClick={() => setMode("all")}>
-          Show all steps
-        </Button>
-      ) : failedOrBlockedCount > 0 ? (
-        <Button appearance="link" onClick={() => setMode("failedOnly")}>
-          Show failed only
-        </Button>
-      ) : null}
-    </Inline>
-  );
-}
-
-function ExpandedSteps({ testCase, steps }) {
-  return (
-    <Box padding="space.100">
-      <Stack space="space.150">
-        {testCase.preconditions ? <Preconditions text={testCase.preconditions} /> : null}
-        {steps.length === 0 ? (
-          <Text size="small" color="color.text.subtlest">No failed or blocked steps.</Text>
-        ) : (
-          <Stack space="space.150">
-            {steps.map((step) => (
-              <StepRow key={step.position} step={step} />
-            ))}
-          </Stack>
-        )}
-      </Stack>
-    </Box>
-  );
-}
-
-function Preconditions({ text }) {
-  const [expanded, setExpanded] = useState(false);
-  const { shown, isTruncated } = truncate(text, PRECONDITIONS_PREVIEW_LENGTH);
-  return (
-    <Stack space="space.025">
-      <Text weight="bold" size="small">Preconditions</Text>
-      <Text size="small">{expanded ? text : shown}</Text>
-      {isTruncated ? (
-        <Button appearance="link" onClick={() => setExpanded(!expanded)}>
-          {expanded ? "Show less" : "Show more"}
-        </Button>
-      ) : null}
+    <Stack space="space.050">
+      <Inline space="space.050" alignBlock="center">
+        {latest ? <Status status={latest.status} /> : null}
+        <Text size="small" color="color.text.subtlest">{parts.join(" · ")}</Text>
+      </Inline>
+      {stepSummary ? <StepCounts summary={stepSummary} /> : (
+        <Text size="small" color="color.text.subtlest">{latest ? "Step-level results not reported" : "No execution yet"}</Text>
+      )}
     </Stack>
   );
 }
 
-/** Abschnitt 15/16/17/18: a FAILED/BLOCKED step gets the full Action/Expected/
- * Actual/Failure treatment; PASSED/SKIPPED/NOT_RUN stay a single compact line --
- * failure earns more attention than a routine pass, not the other way round. */
-function StepRow({ step }) {
-  const result = step.result;
+function Details({ testCase, appBaseUrl, executionSteps }) {
+  const latest = testCase.latestExecution;
+  return (
+    <Stack space="space.150">
+      {latest ? (
+        <Stack space="space.050">
+          <Text weight="bold" size="small">Last execution</Text>
+          {latest.executionName ? <Text size="small">{latest.executionName}</Text> : null}
+          <Inline space="space.050" alignBlock="center">
+            <Status status={latest.status} />
+            <Text size="small" color="color.text.subtlest">
+              {[executorLabel(latest.executor), latest.executedAt ? formatDate(latest.executedAt) : null].filter(Boolean).join(" · ")}
+            </Text>
+          </Inline>
+        </Stack>
+      ) : null}
+      {testCase.preconditions ? <ExpandableText title="Preconditions" text={testCase.preconditions} /> : null}
+      {latest && !executionSteps ? (
+        <Text size="small" color="color.text.subtlest">Step-level results were not reported by this automation source.</Text>
+      ) : null}
+      <StepTable definitions={testCase.steps ?? []} executionSteps={executionSteps} />
+      <Inline space="space.200">
+        <Link href={`${appBaseUrl}/test-cases/${testCase.id}`} openNewTab>Open in Testryn</Link>
+        {latest ? <Link href={`${appBaseUrl}/executions/${latest.executionId}`} openNewTab>Open execution</Link> : null}
+      </Inline>
+    </Stack>
+  );
+}
+
+function Status({ status }) {
+  const meta = statusMeta(status);
+  return <Inline space="space.050" alignBlock="center"><Icon glyph={meta.glyph} label={meta.label} color={meta.color} /><Lozenge appearance={meta.appearance}>{meta.label}</Lozenge></Inline>;
+}
+
+function StepCounts({ summary }) {
+  const total = summary.passed + summary.failed + summary.blocked + summary.notRun + summary.skipped;
+  const parts = [`${summary.passed} / ${total} passed`];
+  if (summary.failed) parts.push(`${summary.failed} failed`);
+  if (summary.blocked) parts.push(`${summary.blocked} blocked`);
+  if (summary.notRun) parts.push(`${summary.notRun} not run`);
+  if (summary.skipped) parts.push(`${summary.skipped} skipped`);
+  return <Text size="small">{parts.join(" · ")}</Text>;
+}
+
+function StepTable({ definitions, executionSteps }) {
+  const byPosition = new Map((executionSteps ?? []).map((step) => [step.position, step]));
+  const displayDefinitions = definitions.length ? definitions : (executionSteps ?? []);
+  const hasReportedResults = Boolean(executionSteps);
+  const head = { cells: [
+    { key: "position", content: "#", width: 7 },
+    { key: "action", content: "Action", width: hasReportedResults ? 28 : 42 },
+    { key: "input", content: "Input / Data", width: 17 },
+    { key: "expected", content: "Expected Result", width: hasReportedResults ? 28 : 34 },
+    ...(hasReportedResults ? [{ key: "result", content: "Result / Actual", width: 20 }] : []),
+  ] };
+  const rows = displayDefinitions.map((definition) => {
+    const executionStep = byPosition.get(definition.position);
+    return { key: `step-${definition.position}`, cells: [
+      { key: "position", content: <StepNumber position={definition.position} result={executionStep?.result} /> },
+      { key: "action", content: <Text size="small">{definition.action}</Text> },
+      { key: "input", content: <Text size="small" color="color.text.subtlest">—</Text> },
+      { key: "expected", content: <Text size="small">{definition.expectedResult}</Text> },
+      ...(hasReportedResults ? [{ key: "result", content: <ResultCell result={executionStep?.result} /> }] : []),
+    ] };
+  });
+  if (!displayDefinitions.length) return <Text size="small" color="color.text.subtlest">No steps in this test definition.</Text>;
+  return <DynamicTable caption={hasReportedResults ? "Test definition and execution results" : "Test definition"}
+    head={head} rows={rows} isFixedSize={false} label="Test steps" />;
+}
+
+function StepNumber({ position, result }) {
+  if (!result) return <Text size="small">{position}</Text>;
   const meta = statusMeta(result.status);
-  const detailed = isAttentionStatus(result.status);
-
-  if (!detailed) {
-    return (
-      <Inline space="space.050" alignBlock="center">
-        <Icon glyph={meta.glyph} label={meta.label} color={meta.color} />
-        <Text size="small">
-          Step {step.position} · {meta.label} · {step.action}
-        </Text>
-      </Inline>
-    );
-  }
-
-  return (
-    <Stack space="space.075">
-      <Inline space="space.050" alignBlock="center">
-        <Icon glyph={meta.glyph} label={meta.label} color={meta.color} />
-        <Text weight="bold" size="small">Step {step.position} · {meta.label}</Text>
-      </Inline>
-      <Field label="ACTION" value={step.action} />
-      <Field label="EXPECTED" value={step.expectedResult} />
-      {result.actualResult ? <Field label="ACTUAL" value={result.actualResult} /> : null}
-      {result.status === "BLOCKED" && result.comment ? <Field label="REASON" value={result.comment} /> : null}
-      {result.failureDetails ? <FailureDetailsField text={result.failureDetails} /> : null}
-    </Stack>
-  );
+  return <Inline space="space.025" alignBlock="center"><Icon glyph={meta.glyph} label={meta.label} color={meta.color} /><Text size="small">{position}</Text></Inline>;
 }
 
-/** Abschnitt 12: label and value are visually distinct (small, subtle, uppercase
- * label above; normal-weight value below) -- not two near-identical text blocks. */
-function Field({ label, value, compact }) {
-  return (
-    <Stack space="space.025">
-      <Text size="small" color="color.text.subtlest">{label}</Text>
-      <Text size={compact ? "small" : "medium"}>{value}</Text>
-    </Stack>
-  );
+function ResultCell({ result }) {
+  if (!result) return <Text size="small" color="color.text.subtlest">NOT REPORTED</Text>;
+  const content = <Stack space="space.050">
+    <Status status={result.status} />
+    {result.actualResult ? <LabeledValue label="Actual" value={result.actualResult} /> : null}
+    {result.status === "BLOCKED" && result.comment ? <LabeledValue label="Reason" value={result.comment} /> : null}
+    {result.failureDetails ? <FailureDetails text={result.failureDetails} /> : null}
+  </Stack>;
+  return result.status === "FAILED" ? <Box xcss={failedStyles}>{content}</Box> : content;
 }
 
-/** Abschnitt 13/14: failure details can be arbitrarily long (a full stacktrace) --
- * never lost, only collapsed. Default preview is a short prefix with a toggle. */
-function FailureDetailsField({ text }) {
+function LabeledValue({ label, value }) {
+  return <Stack space="space.025"><Text size="small" color="color.text.subtlest">{label}</Text><Text size="small">{value}</Text></Stack>;
+}
+
+function ExpandableText({ title, text }) {
   const [expanded, setExpanded] = useState(false);
-  const { shown, isTruncated } = truncate(text, FAILURE_DETAILS_PREVIEW_LENGTH);
-  return (
-    <Stack space="space.025">
-      <Text size="small" color="color.text.subtlest">FAILURE</Text>
-      <Text size="small" color="color.text.danger">{expanded ? text : shown}</Text>
-      {isTruncated ? (
-        <Button appearance="link" onClick={() => setExpanded(!expanded)}>
-          {expanded ? "Hide details" : "Show details"}
-        </Button>
-      ) : null}
-    </Stack>
-  );
+  const { shown, isTruncated } = truncate(text, PREVIEW_LENGTH);
+  return <Stack space="space.025"><Text weight="bold" size="small">{title}</Text><Text size="small">{expanded ? text : shown}</Text>
+    {isTruncated ? <Button appearance="link" onClick={() => setExpanded(!expanded)}>{expanded ? "Show less" : "Show more"}</Button> : null}</Stack>;
+}
+
+function FailureDetails({ text }) {
+  const [expanded, setExpanded] = useState(false);
+  return <Stack space="space.025">
+    {expanded ? <Text size="small" color="color.text.danger">{text}</Text> : null}
+    <Button appearance="link" onClick={() => setExpanded(!expanded)}>{expanded ? "Hide failure details" : "Show failure details"}</Button>
+  </Stack>;
 }

@@ -96,3 +96,12 @@ export function formatDate(isoString) {
     return isoString;
   }
 }
+
+/** Immutable accordion transition. IDs are independent, so several test cases
+ * may stay expanded. */
+export function toggleExpanded(expandedIds, testCaseId) {
+  const next = new Set(expandedIds);
+  if (next.has(testCaseId)) next.delete(testCaseId);
+  else next.add(testCaseId);
+  return next;
+}

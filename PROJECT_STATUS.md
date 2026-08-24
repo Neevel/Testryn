@@ -7,6 +7,20 @@ Stand: 2026-08-24
 
 ## Aktueller Meilenstein
 
+**Forge Accordion Test Details UX: implementiert und nach Development deployed.**
+Alle verlinkten Test Cases starten geschlossen und lassen sich unabhängig voneinander
+öffnen. Der geöffnete Test nutzt eine Jira-native `DynamicTable` für Definition und
+Ergebnis (`#`, Action, Input/Data, Expected Result, Result/Actual); weil das aktuelle
+`TestStep`-Modell kein Input-Feld besitzt, wird dort ehrlich `—` gezeigt. FAILED,
+BLOCKED, SKIPPED und NOT_RUN bleiben über Text, Icon und Farbe unterscheidbar;
+Actual ist direkt am Ergebnis sichtbar, Failure Details erst nach einem separaten
+Toggle. Tests ohne Execution sowie JUnit-/Legacy-Executions ohne Step Results zeigen
+die Definition ohne erfundene Ergebnisse. Forge-Jest (35/35) und `forge lint` sind
+grün; Deployment und echte Installation auf `ki-meets-testautomation.atlassian.net`
+sind aktuell. Die interaktive Sichtprüfung von EVAL-47 einschließlich Wide/Narrow
+und Dark Mode bleibt mangels angemeldeter Atlassian-Browser-Session in dieser
+Ausführungsumgebung offen.
+
 **Step-Level Execution Results: implementiert und live gegen den echten Stack UND
 die echte Jira-Site verifiziert.** Ein Test Case zeigt jetzt nicht mehr nur
 `FAILED`, sondern welcher Step genau fehlgeschlagen ist, mit erwartetem/tatsächlichem

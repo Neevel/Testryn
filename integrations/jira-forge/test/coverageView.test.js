@@ -6,6 +6,7 @@ import {
   rankOf,
   summarizeCoverage,
   summarizeSteps,
+  toggleExpanded,
   truncate,
 } from "../src/frontend/coverageView";
 
@@ -32,6 +33,22 @@ describe("isAttentionStatus", () => {
     expect(isAttentionStatus("PASSED")).toBe(false);
     expect(isAttentionStatus("SKIPPED")).toBe(false);
     expect(isAttentionStatus("NOT_RUN")).toBe(false);
+  });
+});
+
+describe("accordion state", () => {
+  test("starts collapsed and expands then collapses one test case", () => {
+    const initial = new Set();
+    const expanded = toggleExpanded(initial, "tc-1");
+    expect(initial.size).toBe(0);
+    expect(expanded.has("tc-1")).toBe(true);
+    expect(toggleExpanded(expanded, "tc-1").has("tc-1")).toBe(false);
+  });
+
+  test("allows multiple test cases to remain expanded", () => {
+    const one = toggleExpanded(new Set(), "tc-1");
+    const two = toggleExpanded(one, "tc-2");
+    expect([...two]).toEqual(["tc-1", "tc-2"]);
   });
 });
 
