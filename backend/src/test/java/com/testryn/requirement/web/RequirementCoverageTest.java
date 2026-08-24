@@ -11,6 +11,7 @@ import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -44,6 +45,9 @@ class RequirementCoverageTest extends AbstractIntegrationTest {
 
     @Autowired
     private EntityManagerFactory entityManagerFactory;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     // Hibernate statistics are off by default (application.yml has no
     // generate_statistics setting); turned on only for this test class so the
@@ -165,6 +169,132 @@ class RequirementCoverageTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.testCases[0].latestExecution.status").value("PASSED"))
                 .andExpect(jsonPath("$.testCases[0].latestExecution.durationMs").value(1200))
                 .andExpect(jsonPath("$.testCases[0].latestExecution.executedAt").exists());
+    }
+
+    @Test
+    void latestExecutionIncludesStepResultsWhenAllStepsPassed() throws Exception {
+        String testCaseId = createTestCase("Successful login");
+        linkRequirement(testCaseId, "EVAL-70");
+        JsonNode execution = postJson("/api/v1/projects/" + projectKey + "/executions", """
+                {"name":"Regression","testCaseIds":["%s"]}
+                """.formatted(testCaseId), 201);
+        String executionId = execution.get("id").asText();
+        String stepResultId = execution.get("testCases").get(0).get("steps").get(0)
+                .get("result").get("id").asText();
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .patch("/api/v1/executions/{eid}/step-results/{sid}", executionId, stepResultId)
+                        .contentType("application/json")
+                        .content("""
+                                {"status":"PASSED","actualResult":"Username is accepted"}
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/requirement-links/coverage")
+                        .param("provider", "jira")
+                        .param("externalKey", "EVAL-70"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.testCases[0].latestExecution.status").value("PASSED"))
+                .andExpect(jsonPath("$.testCases[0].latestExecution.steps", org.hamcrest.Matchers.hasSize(1)))
+                .andExpect(jsonPath("$.testCases[0].latestExecution.steps[0].position").value(1))
+                .andExpect(jsonPath("$.testCases[0].latestExecution.steps[0].result.status").value("PASSED"))
+                .andExpect(jsonPath("$.testCases[0].latestExecution.steps[0].result.actualResult")
+                        .value("Username is accepted"));
+    }
+
+    @Test
+    void latestExecutionIncludesFailureDetailsForAFailedStep() throws Exception {
+        String testCaseId = createTestCase("Checkout");
+        linkRequirement(testCaseId, "EVAL-71");
+        JsonNode execution = postJson("/api/v1/projects/" + projectKey + "/executions", """
+                {"name":"Regression","testCaseIds":["%s"]}
+                """.formatted(testCaseId), 201);
+        String executionId = execution.get("id").asText();
+        String stepResultId = execution.get("testCases").get(0).get("steps").get(0)
+                .get("result").get("id").asText();
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .patch("/api/v1/executions/{eid}/step-results/{sid}", executionId, stepResultId)
+                        .contentType("application/json")
+                        .content("""
+                                {"status":"FAILED","actualResult":"HTTP 500","failureDetails":"IllegalStateException"}
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/requirement-links/coverage")
+                        .param("provider", "jira")
+                        .param("externalKey", "EVAL-71"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.testCases[0].latestExecution.status").value("FAILED"))
+                .andExpect(jsonPath("$.testCases[0].latestExecution.steps[0].result.status").value("FAILED"))
+                .andExpect(jsonPath("$.testCases[0].latestExecution.steps[0].result.actualResult").value("HTTP 500"))
+                .andExpect(jsonPath("$.testCases[0].latestExecution.steps[0].result.failureDetails")
+                        .value("IllegalStateException"));
+    }
+
+    @Test
+    void aFreshExecutionReportsNotRunStepsRatherThanOmittingThem() throws Exception {
+        String testCaseId = createTestCase("Never touched");
+        linkRequirement(testCaseId, "EVAL-72");
+        postJson("/api/v1/projects/" + projectKey + "/executions", """
+                {"name":"Fresh","testCaseIds":["%s"]}
+                """.formatted(testCaseId), 201);
+
+        mockMvc.perform(get("/api/v1/requirement-links/coverage")
+                        .param("provider", "jira")
+                        .param("externalKey", "EVAL-72"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.testCases[0].latestExecution.steps[0].result.status").value("NOT_RUN"));
+    }
+
+    @Test
+    void aJUnitStyleTestcaseLevelOnlyUpdateLeavesStepsNotRunRatherThanFabricatingPasses() throws Exception {
+        // Simulates publish-junit / CI: only the testcase-level result is patched,
+        // exactly like the bulk endpoint the publisher uses (Abschnitt 20/36) --
+        // steps must stay truthfully NOT_RUN, never silently inferred as PASSED.
+        String testCaseId = createTestCase("Automated test");
+        linkRequirement(testCaseId, "EVAL-73");
+        JsonNode execution = postJson("/api/v1/projects/" + projectKey + "/executions", """
+                {"name":"CI Run","testCaseIds":["%s"]}
+                """.formatted(testCaseId), 201);
+        String executionId = execution.get("id").asText();
+        String resultId = execution.get("testCases").get(0).get("result").get("id").asText();
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .patch("/api/v1/executions/{eid}/results/{rid}", executionId, resultId)
+                        .contentType("application/json")
+                        .content("""
+                                {"status":"PASSED","executor":"ci","durationMs":1420}
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/requirement-links/coverage")
+                        .param("provider", "jira")
+                        .param("externalKey", "EVAL-73"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.testCases[0].latestExecution.status").value("PASSED"))
+                .andExpect(jsonPath("$.testCases[0].latestExecution.executor").value("ci"))
+                .andExpect(jsonPath("$.testCases[0].latestExecution.steps[0].result.status").value("NOT_RUN"));
+    }
+
+    @Test
+    void anExecutionWithNoStepResultRowsAtAllReportsAnEmptyStepsListNotAnError() throws Exception {
+        // Backward compatibility (Abschnitt 35/37): an execution created before
+        // this block has no execution_step_results rows whatsoever.
+        String testCaseId = createTestCase("Legacy execution test");
+        linkRequirement(testCaseId, "EVAL-74");
+        JsonNode execution = postJson("/api/v1/projects/" + projectKey + "/executions", """
+                {"name":"Legacy","testCaseIds":["%s"]}
+                """.formatted(testCaseId), 201);
+        String executionId = execution.get("id").asText();
+        jdbcTemplate.update("DELETE FROM execution_step_results WHERE execution_test_case_id IN "
+                + "(SELECT id FROM execution_test_cases WHERE execution_id = ?::uuid)", executionId);
+
+        mockMvc.perform(get("/api/v1/requirement-links/coverage")
+                        .param("provider", "jira")
+                        .param("externalKey", "EVAL-74"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.testCases[0].latestExecution.steps").isEmpty());
     }
 
     @Test

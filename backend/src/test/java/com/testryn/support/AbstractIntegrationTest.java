@@ -69,6 +69,20 @@ public abstract class AbstractIntegrationTest {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("testryn.storage.base-path", () -> STORAGE_DIR.toString());
+        // Abschnitt 51: `mvn test` must be deterministic regardless of real
+        // TESTRYN_JIRA_* variables a developer's shell happens to have set (used
+        // elsewhere for live Jira verification) -- three RequirementWorkflowTest
+        // assertions were observed to flip from "not configured" to "configured"
+        // purely because of that ambient shell state. Dynamic test properties take
+        // precedence over environment-variable-derived ones, so this forces every
+        // Spring-context integration test onto a known, "not configured" Jira
+        // connection regardless of the real environment. JiraRequirementProviderTest
+        // and other tests that construct their own JiraProperties directly (no
+        // Spring context) are unaffected either way.
+        registry.add("testryn.jira.active", () -> "false");
+        registry.add("testryn.jira.base-url", () -> "");
+        registry.add("testryn.jira.email", () -> "");
+        registry.add("testryn.jira.api-token", () -> "");
     }
 
     /**
