@@ -68,6 +68,19 @@ public class ExecutionResult {
         this.executedAt = status == ExecutionResultStatus.NOT_RUN ? null : Instant.now();
     }
 
+    /**
+     * Sets ONLY the status (and {@code executedAt} alongside it) -- everything else
+     * (comment/durationMs/executor/actualResult/failureDetails) is left exactly as
+     * it was. Used exclusively when a step-level edit derives a new testcase-level
+     * status automatically (ADR 0015, Abschnitt 9): that derivation must never
+     * silently erase a comment or CI-reported duration a human or pipeline already
+     * set on this result through the ordinary testcase-level patch path.
+     */
+    public void deriveStatus(ExecutionResultStatus status) {
+        this.status = status;
+        this.executedAt = status == ExecutionResultStatus.NOT_RUN ? null : Instant.now();
+    }
+
     public UUID getId() {
         return id;
     }

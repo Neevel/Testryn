@@ -82,6 +82,11 @@ public class Execution {
             ExecutionTestCase etc = new ExecutionTestCase(entry.testCase(), entry.version(), position++);
             etc.setExecution(execution);
             etc.setResult(ExecutionResult.createNotRun(etc));
+            // One ExecutionStepResult per step of the pinned version, all NOT_RUN
+            // (Abschnitt 8/ADR 0015) -- requires entry.version().getSteps() to
+            // already be loaded, which it is: TestCaseService's entity graph always
+            // includes currentVersion.steps.
+            etc.initializeStepResults();
             execution.testCases.add(etc);
         }
         return execution;
