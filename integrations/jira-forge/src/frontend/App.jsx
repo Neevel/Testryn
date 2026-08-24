@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Box, Button, EmptyState, SectionMessage, Spinner, Stack, Text } from "@forge/react";
 import { invoke, router } from "@forge/bridge";
 import { TestCaseCard } from "./TestCaseCard";
+import { orderByAttention, summarizeCoverage } from "./coverageView";
 
 /**
  * The panel's single top-level state machine (Abschnitt 20/21): exactly one
@@ -73,19 +74,26 @@ export function App() {
     );
   }
 
+  const ordered = orderByAttention(testCases);
+
   return (
     <Box padding="space.100">
       <Stack space="space.150">
         <CoverageSummary testCases={testCases} totalCount={totalCount} />
         <Stack space="space.100">
-          {testCases.map((testCase) => (
+          {ordered.map((testCase) => (
             <TestCaseCard key={testCase.id} testCase={testCase} appBaseUrl={appBaseUrl} />
           ))}
         </Stack>
         {totalCount > testCases.length ? (
-          <Button appearance="link" onClick={() => router.open(appBaseUrl)}>
-            View all {totalCount} in Testryn
-          </Button>
+          <Stack space="space.050">
+            <Text size="small" color="color.text.subtlest">
+              Showing {testCases.length} of {totalCount} linked tests
+            </Text>
+            <Button appearance="link" onClick={() => router.open(appBaseUrl)}>
+              Show all in Testryn
+            </Button>
+          </Stack>
         ) : null}
       </Stack>
     </Box>
@@ -93,21 +101,16 @@ export function App() {
 }
 
 /** Counts are derived purely from the real, already-fetched testCases array
- * (Abschnitt 15: no fake KPIs) -- a test case with no execution yet counts toward
- * the total but not toward any status bucket. */
+ * (Abschnitt 15: no fake KPIs). Compact single line: only non-zero buckets are
+ * shown, so a fully green story reads as one short segment. */
 function CoverageSummary({ testCases, totalCount }) {
-  const counts = testCases.reduce((acc, tc) => {
-    const status = tc.latestExecution ? tc.latestExecution.status : null;
-    if (status) {
-      acc[status] = (acc[status] ?? 0) + 1;
-    }
-    return acc;
-  }, {});
+  const counts = summarizeCoverage(testCases);
 
   const parts = [];
   if (counts.PASSED) parts.push(`${counts.PASSED} passed`);
   if (counts.FAILED) parts.push(`${counts.FAILED} failed`);
   if (counts.BLOCKED) parts.push(`${counts.BLOCKED} blocked`);
+  if (counts.NOT_RUN) parts.push(`${counts.NOT_RUN} not run`);
   if (counts.SKIPPED) parts.push(`${counts.SKIPPED} skipped`);
 
   return (

@@ -12,10 +12,16 @@ for the design decisions.
 
 ```
 manifest.yml            Forge app manifest (jira:issuePanel module, permissions, env vars)
-src/frontend/           UI Kit panel (App.jsx, TestCaseCard.jsx, statusMeta.js)
+src/frontend/           UI Kit panel (App.jsx, TestCaseCard.jsx, statusMeta.js,
+                         coverageView.js -- pure rendering-decision logic, kept
+                         separate from the UI Kit components so it's unit-testable;
+                         UI Kit itself compiles to Forge's bridge protocol, not real
+                         DOM, so it cannot be rendered/asserted against in Jest)
 src/resolvers/          Backend resolver -- the only thing that ever calls Testryn
 test/                   Jest tests for the resolver (issue-key extraction, every
-                         Testryn response state, no-token-leakage)
+                         Testryn response state, no-token-leakage) and for
+                         coverageView.js (step summarization, failure filtering,
+                         truncation, executor labeling, attention-first ordering)
 ```
 
 ## Develop

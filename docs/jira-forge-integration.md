@@ -99,7 +99,7 @@ so a caller can offer "view all" instead of silently truncating (Abschnitt 23).
             "position": 1,
             "action": "Enter valid username",
             "expectedResult": "Username is accepted",
-            "result": { "status": "PASSED", "actualResult": "Username is accepted", "failureDetails": null }
+            "result": { "status": "PASSED", "actualResult": "Username is accepted", "failureDetails": null, "comment": null }
           }
         ]
       }
@@ -117,7 +117,11 @@ pinned step snapshot with its actual result each (ADR 0015) -- an empty list mea
 step-level results were never reported for that execution (an execution that
 predates the Step-Level Execution Results block, or a testcase-level-only
 automation result such as JUnit, Abschnitt 20/36/35) -- the panel shows "Step-level
-results not reported for this execution" rather than fabricating a per-step status.
+results not reported by this automation source" rather than fabricating a
+per-step status. Each step result's `comment` (added in the Forge Panel UX
+Refinement block, a purely additive DTO field -- no domain/migration/aggregation
+change) is the only field carrying a human-written reason for a BLOCKED step, the
+same field the Runner already writes to.
 
 **Query strategy** (Abschnitt 22/25): the whole response is built from exactly two
 database round trips regardless of how many test cases are linked -- one batch
@@ -242,25 +246,30 @@ does not repeat it). States:
 
 - **Loading**: a single, fixed-height spinner -- no layout jump once data arrives
   (Abschnitt 20).
-- **Coverage summary + list**: real counts only (`N linked tests · X passed · Y
-  failed · ...`, Abschnitt 15), each linked test case collapsed by default
-  (Abschnitt 12/28) showing id/title/status/version/priority, its latest-execution
-  status as text + icon + color together (Abschnitt 13/30, never color alone), and
-  a `X / Y steps passed` line when step data exists.
-  Expanding a card (Abschnitt 29) reveals preconditions and, for each step: its own
-  status (✓/✕/!/–/○, Abschnitt 30), action, expected result, actual result, and
-  failure details if it failed. A failed test case never truncates its step list --
-  the failing step is visible the instant the card expands, no extra click
-  (Abschnitt 32); an all-green case with many steps still collapses to a short
-  preview with a "Show all N steps" link (Abschnitt 31). Executor is shown as a
-  compact `CI`/`Manual` badge next to the status (Abschnitt 33/34, from the same
-  `executor` field the runner and publisher already write -- no new source-of-truth
-  concept). A test case whose latest execution has no step data (pre-ADR-0015, or a
-  JUnit/testcase-level-only automation result) shows "Step-level results not
-  reported for this execution" and falls back to the test case's plain current-step
-  list as a preview, rather than showing nothing or fabricating a status (Abschnitt
-  35/36). Every card has an "Open in Testryn" link; a card with a latest execution
-  also gets "Open latest execution" (Abschnitt 16).
+- **Coverage summary + list** (redesigned in the Forge Panel UX Refinement block
+  around "summary first, failure first, details on demand"): a compact one-line
+  summary (`N linked tests · X passed · Y failed · Z not run`, only non-zero
+  buckets shown), test cases ordered failed/blocked first so the cases needing
+  attention never require scrolling past a wall of green ones to be found. Each
+  card is fully informative with **zero clicks**: id and title on separate lines,
+  status/priority/version, execution source (`Manual`/`CI`, plain text, never a
+  guess when no executor was reported) and date, a compact step-count line
+  (`2 ✓ · 1 ✕ · 1 ○`), and -- if the run failed or was blocked -- an inline
+  "Failed at Step N" mini-summary (action, expected, actual, and a blocked reason
+  if one was recorded) with no separate expand step. Two explicit, optional
+  actions reveal more: "Show failed only" (every FAILED/BLOCKED step, hidden when
+  it would just repeat the one already shown inline) and "Show all steps" (every
+  step; PASSED/SKIPPED/NOT_RUN render as a single compact line, FAILED/BLOCKED get
+  the full action/expected/actual/failure detail -- failure earns more visual
+  weight than a routine pass, not the other way round). Both collapse cleanly back
+  to the compact summary via a "Collapse" button. A failure's stack trace is
+  truncated with a "Show details" toggle rather than rendered in full by default,
+  never losing data, only how much is shown at once. A test case whose latest
+  execution has no step data (pre-ADR-0015, or a JUnit/testcase-level-only
+  automation result) states that plainly ("Step-level results not reported by
+  this automation source") instead of an empty step area. "Open in Testryn" and
+  "Open execution" are grouped together at the card's footer, never interspersed
+  with step content.
 - **Empty** (no linked test cases): "No Testryn test cases linked" with a link to
   Testryn -- no create-from-Jira action in this MVP (Abschnitt 17).
 - **Error** (Testryn unreachable): "Testryn is currently unavailable. Existing Jira
