@@ -105,3 +105,15 @@ export function toggleExpanded(expandedIds, testCaseId) {
   else next.add(testCaseId);
   return next;
 }
+
+/** Execution steps are an immutable, pinned definition+result snapshot and must
+ * win over the current test-case definition. Without reported step results (no
+ * execution, JUnit, or legacy data), normalize the current DTO's `order` field. */
+export function stepsForDisplay(definitionSteps, executionSteps) {
+  if (executionSteps?.length) return executionSteps;
+  return (definitionSteps ?? []).map((step) => ({
+    ...step,
+    position: step.position ?? step.order,
+    result: null,
+  }));
+}

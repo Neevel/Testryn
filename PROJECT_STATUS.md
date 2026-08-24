@@ -15,11 +15,12 @@ Ergebnis (`#`, Action, Input/Data, Expected Result, Result/Actual); weil das akt
 BLOCKED, SKIPPED und NOT_RUN bleiben über Text, Icon und Farbe unterscheidbar;
 Actual ist direkt am Ergebnis sichtbar, Failure Details erst nach einem separaten
 Toggle. Tests ohne Execution sowie JUnit-/Legacy-Executions ohne Step Results zeigen
-die Definition ohne erfundene Ergebnisse. Forge-Jest (35/35) und `forge lint` sind
-grün; Deployment und echte Installation auf `ki-meets-testautomation.atlassian.net`
-sind aktuell. Die interaktive Sichtprüfung von EVAL-47 einschließlich Wide/Narrow
-und Dark Mode bleibt mangels angemeldeter Atlassian-Browser-Session in dieser
-Ausführungsumgebung offen.
+die aktuelle Definition ohne erfundene Ergebnisse; Executions rendern dagegen
+konsequent ihre gepinnte Definition zusammen mit den Step Results, statt aktuelle
+und historische Versionen zu vermischen. Eine echte EVAL-47-Sichtprüfung im Dark
+Mode deckte das frühere `order`/`position`-Mappingproblem auf; der Fix ist mit
+38/38 Forge-Jest-Tests und `forge lint` abgesichert und nach Development deployed.
+Eine erneute visuelle Abnahme sowie Narrow Layout bleiben offen.
 
 **Step-Level Execution Results: implementiert und live gegen den echten Stack UND
 die echte Jira-Site verifiziert.** Ein Test Case zeigt jetzt nicht mehr nur

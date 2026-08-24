@@ -51,6 +51,9 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 - [x] Verlinkte Test Cases als standardmäßig geschlossene, unabhängig öffnbare
       Accordions; Steps im geöffneten Zustand als Jira-native Tabelle mit
       Definition, Result/Actual und einklappbaren Failure Details
+- [x] Execution-Step-Tabelle nutzt die gepinnte Execution-Version (`position`),
+      No-Execution/JUnit/Legacy dagegen die aktuelle Definition (`order`); keine
+      Vermischung aktueller und historischer Steps
 - [x] `docs/jira-forge-integration.md`, ADR 0014
 - [x] 13 Backend- + 15 Forge-Tests grün; Backend-Erreichbarkeit real per
       `cloudflared`-Tunnel verifiziert
@@ -60,10 +63,9 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
       nachgeholt
 - [ ] **Weiterhin offen**: Empty-State an einem unverlinkten Issue,
       simulierte Testryn-Downtime im echten Panel, tatsächliche visuelle
-      Browser-Kontrolle des Accordion-/Tabellen-Panels auf EVAL-47 einschließlich
-      Wide/Narrow und Dark Mode (kein angemeldeter Atlassian-Browser in der Session
-      verfügbar) — Deployment/Installation und Coverage-Daten sind live bestätigt,
-      nur die UI-Interaktion selbst blieb ungeprüft.
+      erneute Browser-Abnahme des korrigierten Accordion-/Tabellen-Panels auf
+      EVAL-47 einschließlich Narrow Layout. Die erste echte Dark-Mode-Abnahme hat
+      das inzwischen korrigierte Snapshot-Mappingproblem sichtbar gemacht.
 
 ## Now (Step-Level Execution Results, siehe PROJECT_STATUS.md)
 

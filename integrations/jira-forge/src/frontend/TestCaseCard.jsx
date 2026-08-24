@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Box, Button, DynamicTable, Icon, Inline, Link, Lozenge, Stack, Text, xcss } from "@forge/react";
 import { statusMeta } from "./statusMeta";
-import { executorLabel, formatDate, summarizeSteps, truncate } from "./coverageView";
+import { executorLabel, formatDate, stepsForDisplay, summarizeSteps, truncate } from "./coverageView";
 
 const PREVIEW_LENGTH = 160;
 const cardStyles = xcss({ borderColor: "color.border", borderStyle: "solid", borderWidth: "border.width", borderRadius: "border.radius.200" });
@@ -17,34 +17,36 @@ export function TestCaseCard({ testCase, appBaseUrl }) {
   return (
     <Box padding="space.100" xcss={cardStyles}>
       <Stack space="space.100">
-        <Button appearance="subtle" iconBefore={expanded ? "chevron-down" : "chevron-right"}
-          onClick={() => setExpanded((current) => !current)} shouldFitContainer>
-          {testCase.humanId}
-        </Button>
-        <Text weight="bold">{testCase.title}</Text>
-        <Summary testCase={testCase} stepSummary={summarizeSteps(executionSteps)} />
+        <Inline space="space.075" alignBlock="center" shouldWrap>
+          <Button appearance="subtle" iconBefore={expanded ? "chevron-down" : "chevron-right"}
+            onClick={() => setExpanded((current) => !current)}>
+            {testCase.humanId}
+          </Button>
+          <Text weight="bold">{testCase.title}</Text>
+        </Inline>
+        <Summary testCase={testCase} stepSummary={summarizeSteps(executionSteps)} expanded={expanded} />
         {expanded ? <Details testCase={testCase} appBaseUrl={appBaseUrl} executionSteps={executionSteps} /> : null}
       </Stack>
     </Box>
   );
 }
 
-function Summary({ testCase, stepSummary }) {
+function Summary({ testCase, stepSummary, expanded }) {
   const latest = testCase.latestExecution;
   const parts = [testCase.priority, `v${testCase.version}`];
-  if (latest) {
+  if (latest && !expanded) {
     if (executorLabel(latest.executor)) parts.push(executorLabel(latest.executor));
     if (latest.executedAt) parts.push(formatDate(latest.executedAt));
   }
   return (
     <Stack space="space.050">
       <Inline space="space.050" alignBlock="center">
-        {latest ? <Status status={latest.status} /> : null}
+        {latest && !expanded ? <Status status={latest.status} /> : null}
         <Text size="small" color="color.text.subtlest">{parts.join(" · ")}</Text>
       </Inline>
-      {stepSummary ? <StepCounts summary={stepSummary} /> : (
+      {!expanded && stepSummary ? <StepCounts summary={stepSummary} /> : !expanded ? (
         <Text size="small" color="color.text.subtlest">{latest ? "Step-level results not reported" : "No execution yet"}</Text>
-      )}
+      ) : null}
     </Stack>
   );
 }
@@ -94,8 +96,7 @@ function StepCounts({ summary }) {
 }
 
 function StepTable({ definitions, executionSteps }) {
-  const byPosition = new Map((executionSteps ?? []).map((step) => [step.position, step]));
-  const displayDefinitions = definitions.length ? definitions : (executionSteps ?? []);
+  const displaySteps = stepsForDisplay(definitions, executionSteps);
   const hasReportedResults = Boolean(executionSteps);
   const head = { cells: [
     { key: "position", content: "#", width: 7 },
@@ -104,19 +105,17 @@ function StepTable({ definitions, executionSteps }) {
     { key: "expected", content: "Expected Result", width: hasReportedResults ? 28 : 34 },
     ...(hasReportedResults ? [{ key: "result", content: "Result / Actual", width: 20 }] : []),
   ] };
-  const rows = displayDefinitions.map((definition) => {
-    const executionStep = byPosition.get(definition.position);
-    return { key: `step-${definition.position}`, cells: [
-      { key: "position", content: <StepNumber position={definition.position} result={executionStep?.result} /> },
-      { key: "action", content: <Text size="small">{definition.action}</Text> },
+  const rows = displaySteps.map((step) => {
+    return { key: `step-${step.position}`, cells: [
+      { key: "position", content: <StepNumber position={step.position} result={step.result} /> },
+      { key: "action", content: <Text size="small">{step.action}</Text> },
       { key: "input", content: <Text size="small" color="color.text.subtlest">—</Text> },
-      { key: "expected", content: <Text size="small">{definition.expectedResult}</Text> },
-      ...(hasReportedResults ? [{ key: "result", content: <ResultCell result={executionStep?.result} /> }] : []),
+      { key: "expected", content: <Text size="small">{step.expectedResult}</Text> },
+      ...(hasReportedResults ? [{ key: "result", content: <ResultCell result={step.result} /> }] : []),
     ] };
   });
-  if (!displayDefinitions.length) return <Text size="small" color="color.text.subtlest">No steps in this test definition.</Text>;
-  return <DynamicTable caption={hasReportedResults ? "Test definition and execution results" : "Test definition"}
-    head={head} rows={rows} isFixedSize={false} label="Test steps" />;
+  if (!displaySteps.length) return <Text size="small" color="color.text.subtlest">No steps in this test definition.</Text>;
+  return <DynamicTable head={head} rows={rows} isFixedSize={false} label="Test steps" />;
 }
 
 function StepNumber({ position, result }) {

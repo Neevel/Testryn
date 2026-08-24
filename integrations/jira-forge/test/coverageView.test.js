@@ -6,6 +6,7 @@ import {
   rankOf,
   summarizeCoverage,
   summarizeSteps,
+  stepsForDisplay,
   toggleExpanded,
   truncate,
 } from "../src/frontend/coverageView";
@@ -49,6 +50,29 @@ describe("accordion state", () => {
     const one = toggleExpanded(new Set(), "tc-1");
     const two = toggleExpanded(one, "tc-2");
     expect([...two]).toEqual(["tc-1", "tc-2"]);
+  });
+});
+
+describe("stepsForDisplay", () => {
+  const currentV2 = [
+    { order: 1, action: "Current v2 action", expectedResult: "Current v2 expected" },
+    { order: 2, action: "New v2 step", expectedResult: "New" },
+  ];
+
+  test("uses the pinned execution snapshot instead of mixing in the current version", () => {
+    const pinnedV1 = [{ position: 1, action: "Pinned v1 action", expectedResult: "Pinned v1 expected", result: stepResult("FAILED") }];
+    expect(stepsForDisplay(currentV2, pinnedV1)).toEqual(pinnedV1);
+  });
+
+  test("normalizes current definition order when there are no reported step results", () => {
+    expect(stepsForDisplay(currentV2, null)).toEqual([
+      { ...currentV2[0], position: 1, result: null },
+      { ...currentV2[1], position: 2, result: null },
+    ]);
+  });
+
+  test("uses the current definition for JUnit or legacy executions with an empty step result list", () => {
+    expect(stepsForDisplay(currentV2, []).map((step) => step.position)).toEqual([1, 2]);
   });
 });
 
