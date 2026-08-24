@@ -18,6 +18,9 @@ frontend/vite.config.d.ts
 integrations/jira-forge/node_modules/
 integrations/jira-forge/.forge/
 integrations/jira-forge/dist/
+# Forge CLI's local auth/keychain cache (used when no OS keychain is available) --
+# credential-adjacent local machine state, never committed.
+integrations/jira-forge/.container-service-assets/
 
 # Env / secrets
 .env

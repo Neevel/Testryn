@@ -6,7 +6,7 @@
 # own this app, and it will rewrite this value to a real
 # `ari:cloud:ecosystem::app/<uuid>` -- never hand-edit it otherwise.
 app:
-  id: ari:cloud:ecosystem::app/00000000-0000-0000-0000-000000000000
+  id: ari:cloud:ecosystem::app/7ad8348d-f2b4-43b9-82be-2ed6a3c10498
   runtime:
     name: nodejs22.x
 
@@ -42,13 +42,7 @@ permissions:
   external:
     fetch:
       backend:
-        # Live-verification tunnel (Abschnitt 10 -- Forge Cloud cannot reach a
-        # developer's own localhost): a cloudflared quick tunnel to the local
-        # docker-compose backend, opened for this block's live verification.
-        # Ephemeral -- replace with your own tunnel/deployment host if this one has
-        # since expired. See docs/jira-forge-integration.md, "Localhost problem".
-        - 'https://temporarily-mating-kodak-sources.trycloudflare.com'
-
+        - address: https://chris-vision-hurricane-hero.trycloudflare.com
 # TESTRYN_API_BASE_URL / TESTRYN_APP_BASE_URL are plain (non-secret) config -- just
 # URLs, safe to default and to see in `forge variables list`. TESTRYN_API_TOKEN is
 # NOT declared here: encrypted variables are set directly via
