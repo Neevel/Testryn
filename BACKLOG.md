@@ -39,17 +39,36 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 - [x] Bestehende Test-Suite auf Auth umgestellt (Standard-Admin-Token je Testlauf),
       alle bisherigen Regressionstests weiterhin grün
 
+## Now (Jira Forge Issue Panel, siehe PROJECT_STATUS.md)
+
+- [x] Provider-neutrales Read-API `GET /api/v1/requirement-links/coverage`
+      (Test Cases + Steps + letztes Execution-Ergebnis in zwei DB-Roundtrips,
+      N+1-Regressionstest über Hibernate-Statistics)
+- [x] Forge-App `integrations/jira-forge` — `jira:issuePanel`, UI Kit (kein
+      iframe), Resolver hält den Service Token, nie der Browser
+- [x] Alle fünf Panel-Zustände (Loading/Ok/Empty/Unavailable/Unauthorized), Status
+      immer Text+Icon+Farbe, Coverage-Summary aus echten Daten
+- [x] `docs/jira-forge-integration.md`, ADR 0014
+- [x] 13 Backend- + 15 Forge-Tests grün; Backend-Erreichbarkeit real per
+      `cloudflared`-Tunnel verifiziert
+- [ ] **Offen**: `forge deploy`/`forge install` in die echte Jira-Site, Live-Test
+      gegen EVAL-47, Empty-State an einem unverlinkten Issue, simulierte
+      Testryn-Downtime im echten Panel — bewusst dem Nutzer selbst überlassen
+      (Atlassian-Account-Login nötig); Schritt-für-Schritt-Anleitung fertig in
+      `docs/jira-forge-integration.md`.
+
 ## Next
 
-- **Jira Forge App / Issue Panel** — empfohlener nächster *fachlicher* Block: die
-  REST-API liefert bereits alles Nötige (Requirement-Links,
-  Execution-Status/-Progress-Endpoints für PASS/FAIL/Coverage), eine Forge-App
-  bräuchte keinen Architekturumbau, nur die App selbst (inkl. eines eigenen Service
-  Tokens für ihr Backend, ADR 0012).
 - **Human User Authentication** (Login, Sessions) — bewusst nicht in diesem Block
   (Abschnitt 9/36); Service Tokens sind explizit Maschinen-Credentials, keine
   Personen-Identität. Das Frontend braucht bis dahin weiterhin die
-  Dev-Token-Übergangslösung aus diesem Block.
+  Dev-Token-Übergangslösung aus diesem Block. Mit einem echten externen Consumer
+  der API (Jira-Nutzer über das Forge-Panel) jetzt zusätzlich relevanter als zuvor.
+- **Forge-Panel-Schreibaktionen** (Create Test Case, Link Existing, Start
+  Execution) — Architektur bewusst nicht verbaut (eigener `testryn:write`-Token,
+  kein stiller Scope-Ausbau des bestehenden Read-Tokens), aber explizit nicht in
+  diesem Block gebaut (Abschnitt 31/47). Kein AI-„Generate Tests"-Button (Abschnitt
+  32/47) — separater, noch nicht begonnener Block.
 - **Weitere Report-Importer** (Playwright, Cypress, Allure, NUnit, pytest) — dieselbe
   `ResultBatchReader`-Schnittstelle wie beim jetzt implementierten JUnit-XML-Adapter,
   jeweils ein kleinerer, eigenständiger Block.
@@ -63,7 +82,6 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
   nach Umstellung widerrufen" als geführter Workflow statt zweier manueller
   Schritte) — aktuell manuell über Create + Revoke möglich, kein eigener Workflow.
 - **Jira OAuth 2.0** — `JiraAuthType.OAUTH2` existiert bereits als Enum-Wert.
-- **Jira Forge App** — Vorbereitung konkretisiert (siehe Later), noch nicht gebaut.
 - **RBAC über die drei Service-Token-Scopes hinaus** — bewusst nicht in diesem Block
   (Abschnitt 36); erst bei konkretem Bedarf (z. B. projektspezifische Tokens).
 - **Result-Audit-History** — Statusübergangs-Historie (voriger/neuer Status,
@@ -94,11 +112,6 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 - **Report-Importer für TestNG, Playwright, Cypress, Allure, NUnit, pytest**
   (automatische Ergebnis-Interpretation) — JUnit-XML ist implementiert (siehe „Now"),
   Architektur (`ResultBatchReader`) für die übrigen Formate vorbereitet, siehe Next.
-- **Jira Forge App** — die REST-API liefert bereits alles Nötige
-  (`GET /test-cases/{id}/requirements`, `GET /projects/{key}/requirements`,
-  Execution-Status/Progress-Endpoints für PASS/FAIL/Coverage) — eine spätere
-  Forge-App bräuchte keinen Architekturumbau, nur die App selbst (inkl. eines
-  eigenen Service Tokens für ihr Backend, siehe ADR 0012).
 - **SSO / SAML / LDAP** — erst relevant, sobald Human User Authentication selbst
   ansteht.
 - Eigener MCP Server für Testryn

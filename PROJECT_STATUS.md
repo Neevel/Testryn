@@ -3,24 +3,124 @@
 > Momentaufnahme des aktuellen technischen Stands. Keine Historie — siehe Git-Log für
 > Verlauf. Wird bei jedem abgeschlossenen, relevanten Task aktualisiert.
 
-Stand: 2026-08-21
+Stand: 2026-08-24
 
 ## Aktueller Meilenstein
 
-**JUnit XML Publisher Adapter: implementiert und live verifiziert.**
-`testryn-publisher publish-junit` liest Maven-Surefire-/Failsafe-XML direkt aus
-`target/surefire-reports` (Multi-File, sichere XML-Verarbeitung gegen XXE,
-`classname#name`-Automation-Mapping nach ADR 0013) und veröffentlicht sie über
-denselben authentifizierten Bulk-Result-Update-Pfad wie der bestehende
-JSON-`publish`-Workflow — unverändert daneben nutzbar. Live gegen den echten,
-laufenden Stack verifiziert: ein reales Maven/JUnit-5-Fixture-Projekt, ein echter
-`mvn test`-Lauf, die daraus resultierenden echten Surefire-XML-Dateien, vier reale
-Testryn-Test-Cases und ein echter, authentifizierter Bulk-Publish. Details siehe
-„JUnit XML Import & CI Adapter" unten.
+**Jira Forge Issue Panel: implementiert, gegen den echten Stack unit- und
+integrationsgetestet, Backend-Erreichbarkeit live per Tunnel verifiziert —
+`forge deploy`/`forge install` in die reale Jira-Site bewusst dem Nutzer selbst
+überlassen (siehe „Jira Forge Issue Panel" unten für den genauen Verifikationsstand
+und was noch offen ist).** Ein neues, provider-neutrales Read-API
+(`GET /api/v1/requirement-links/coverage`) plus eine eigenständige Forge-App
+(`integrations/jira-forge`, UI Kit, kein iframe) zeigen verlinkte Testryn-Test-Cases
+samt Steps, Expected Results und letztem Execution-Status direkt in der
+Jira-Story/Task/Bug/Epic-Ansicht — read-only, Testryn bleibt Source of Truth, Jira
+speichert keine Kopie der Testdaten (ADR 0014).
 
-Die vorherigen Blöcke (API & Service Security; Jira Cloud live-verifiziert;
-Bulk-Result-Update, `automationReference`, CI-Publisher) sind unverändert gültig —
-siehe Git-Log und die Abschnitte weiter unten in dieser Datei für Details.
+Die vorherigen Blöcke (JUnit XML Publisher Adapter; API & Service Security; Jira
+Cloud live-verifiziert; Bulk-Result-Update, `automationReference`, CI-Publisher)
+sind unverändert gültig — siehe Git-Log und die Abschnitte weiter unten in dieser
+Datei für Details.
+
+## Jira Forge Issue Panel (ADR 0014)
+
+**Backend** (`backend/`, Modul `requirement`):
+
+- Neuer Read-Endpoint `GET /api/v1/requirement-links/coverage?provider=jira&externalKey=EVAL-47[&limit=20]`
+  — provider-neutral (`provider` ein gewöhnlicher Query-Parameter, kein
+  Jira-Spezifikum im Core, Abschnitt 6), löst alle zu einer `provider`+`externalKey`
+  verlinkten Test Cases samt aktueller Version/Steps und jeweils letztem
+  Execution-Ergebnis in **zwei** Datenbank-Roundtrips auf (nicht pro Test Case
+  einer) — verifiziert durch einen dedizierten Hibernate-Statistics-Regressionstest,
+  nicht nur durch Code-Inspektion.
+- Neu: `ExecutionTestCaseRepository.findLatestByTestCaseIds` (eine JPQL-Korrelated-
+  Subquery, "neueste Execution je Test Case" für einen ganzen Batch von IDs in
+  einer Abfrage), `TestCaseRepository.findByIdIn` (Batch-Variante der bestehenden
+  Entity-Graph-Ladepfade), `RequirementLinkRepository.findByProviderAndExternalKeyOrderByCreatedAtAsc`.
+- Kein `RequirementCoverageService`-in-`RequirementLinkService` — eigener Service,
+  weil dieser eine Anfrage tatsächlich drei Aggregate übergreift (Requirement
+  Links, Test Cases, Execution-Ergebnisse).
+- Leere Trefferliste (kein Link für den Key) → `200` mit leerem `testCases`-Array,
+  kein Fehler. `limit` (Default 20, Max 100) begrenzt, `totalCount` bleibt der
+  echte Gesamtwert (Abschnitt 23 — kein stilles Abschneiden ohne Hinweis).
+- Benötigt `testryn:read` wie jedes andere `GET` unter `/api/**` (ADR 0012) — keine
+  neue Security-Regel nötig.
+
+**Forge-App** (`integrations/jira-forge`, eigenständiges Modul, nicht im
+React-Frontend gemischt, Abschnitt 33):
+
+- `jira:issuePanel`-Modul, **UI Kit** (`@forge/react`) statt Custom UI — rendert
+  Jira-nativ, komplett ohne iframe (ADR 0014 Entscheidung 2, erfüllt Abschnitt 27
+  strukturell statt zufällig).
+- Aktuelle Issue-Referenz kommt serverseitig aus dem von der Plattform
+  bereitgestellten Aufruf-Kontext (`context.extension.issue.key`), nicht aus einem
+  manuellen Feld oder einem vertrauten Frontend-Payload-Wert (Abschnitt 29).
+- Genau ein `invoke("getCoverage")`-Aufruf pro Panel-Rendering → genau ein
+  Testryn-HTTP-Request (Abschnitt 22).
+- Resolver (`src/resolvers/`) ist die einzige Stelle, die je mit Testryn spricht —
+  nie der Browser (Abschnitt 7). `TESTRYN_API_TOKEN` ist eine verschlüsselte Forge-
+  Umgebungsvariable, wird ausschließlich serverseitig gelesen, erscheint in keiner
+  Resolver-Antwort, egal ob Erfolg oder Fehler.
+- Panel-Zustände: Loading (fixe Höhe, kein Layout-Sprung), Ok (echte Coverage-
+  Summary + eine standardmäßig eingeklappte Karte je Test Case mit Status als
+  Text+Icon+Farbe, Abschnitt 13), Empty ("No Testryn test cases linked" + Link),
+  Unavailable ("Testryn is currently unavailable. Existing Jira data is
+  unaffected."), Unauthorized ("Testryn connection is not authorized.") — nie ein
+  Stacktrace, nie ein Tokendetail.
+- `permissions.scopes: []` (keine Jira-REST-Aufrufe nötig), kein `write`-Scope
+  gegenüber Testryn irgendwo (Abschnitt 8/47 — dieser Block ist vollständig
+  read-only).
+
+**Tests:**
+
+- `RequirementCoverageTest` (Backend, 13): Einzel-/Mehrfach-Treffer, keine Links,
+  Case-Insensitivität bei provider/externalKey, mit/ohne Execution, Pagination-Cap
+  mit echtem `totalCount`, kein Token → 401, Read-Token ausreichend (dokumentiert
+  explizit: kein "wrong scope" 403 möglich, da READ bereits der niedrigste Scope
+  ist), unbekannter Provider → 400, N+1-Regressionstest über Hibernate-Statistics.
+- `test/testrynClient.test.js` + `test/resolver.test.js` (Forge, 15, Jest gegen die
+  echte `@forge/resolver`-Bibliothek + gemocktes `@forge/api`-fetch): Issue-Key-
+  Extraktion, fehlender Issue-Key → kein Testryn-Aufruf, erfolgreiche Antwort,
+  leere Antwort, Testryn 401/403 → "unauthorized", Netzwerkfehler/5xx →
+  "unavailable", malformed Response → "unavailable" statt Crash, Token erscheint
+  in keinem einzigen Ergebnis (Erfolg oder Fehler), fehlender Token → kein Crash.
+
+**`cd backend && mvn test`: 119/119 grün** (108 vorher + 13 neu — mit
+`TESTRYN_JIRA_*` bewusst aus der Shell entfernt, um die bekannte, umgebungs-
+bedingte `RequirementWorkflowTest`-Störung zu vermeiden, Abschnitt 45).
+**`cd integrations/jira-forge && npm test`: 15/15 grün.**
+**`cd tools/testryn-publisher && mvn test`: 82/82 grün** (unverändert, Regression
+bestätigt). **`cd frontend && npm run build`/`npm run test`: fehlerfrei bzw. 5/5
+grün** (unverändert, nicht von diesem Block betroffen).
+
+### Live-Verifikationsstand (Abschnitt 39-43)
+
+- **Backend-Erreichbarkeit real verifiziert**: `docker compose build backend &&
+  docker compose up -d backend` mit dem neuen Endpoint; `GET
+  /api/v1/requirement-links/coverage` liefert `401` ohne Token über
+  `http://localhost:8080` **und** über einen echten, öffentlich erreichbaren
+  `cloudflared`-Quick-Tunnel (`https://temporarily-mating-kodak-sources.trycloudflare.com`,
+  ephemer, ohne Cloudflare-Account) — bestätigt, dass Forge Cloud den Endpoint
+  tatsächlich erreichen könnte (Abschnitt 10).
+- **`forge deploy`/`forge install` bewusst nicht von dieser Session durchgeführt**:
+  erfordert einen echten Atlassian-Account-Login (`forge login`) und registriert
+  eine reale App unter dem Account des Nutzers sowie eine reale Installation in
+  dessen Jira-Site — dem Nutzer zur expliziten Entscheidung vorgelegt; gewählt
+  wurde „Tunnel öffnen, Deployment selbst durchführen". `manifest.yml` ist bereits
+  mit dem echten Tunnel-Host in der Egress-Allowlist vorbereitet;
+  `docs/jira-forge-integration.md` enthält die vollständige Schritt-für-Schritt-
+  Anleitung (`forge login` → `forge register` → dedizierter `testryn:read`-Token
+  → `forge variables set --encrypt` → `forge deploy` → `forge install`).
+- **Damit noch offen**: die eigentliche Live-Verifikation gegen EVAL-47 in einer
+  echten Jira-Story (Abschnitt 39/40), der Empty-State an einem unverlinkten Issue
+  (Abschnitt 41), die simulierte Testryn-Downtime im echten Panel (Abschnitt 42) und
+  die Browser-seitige Security-Prüfung „Token nie im UI-Payload sichtbar"
+  (Abschnitt 43, Teil „Browser") — all das erfordert die tatsächliche
+  Forge-Installation, die der Nutzer nach dieser Session selbst durchführt. Die
+  Token-Handling-Garantien selbst (nie im Resolver-Ergebnis, nie geloggt) sind
+  bereits vollständig durch `test/testrynClient.test.js` abgedeckt und geben hohe
+  Zuversicht, dass die Live-Prüfung dieselben Garantien bestätigen wird.
 
 ## JUnit XML Import & CI Adapter (ADR 0013)
 
