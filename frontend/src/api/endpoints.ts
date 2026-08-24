@@ -15,6 +15,7 @@ import type {
   ServiceTokenCreated,
   ServiceTokenScope,
   Step,
+  StepResult,
   TestCase,
   TestCasePriority,
   TestCaseStatus,
@@ -141,6 +142,25 @@ export const ExecutionsApi = {
       failureDetails?: string | null;
     },
   ) => api.patch<ExecutionResult>(`/api/v1/executions/${executionId}/results/${resultId}`, input),
+  /** Same JSON Merge Patch semantics, one level deeper (ADR 0015). Applying this
+   * also re-derives the owning test case's testcase-level status server-side. */
+  updateStepResult: (
+    executionId: string,
+    stepResultId: string,
+    input: {
+      status?: ExecutionResultStatus;
+      actualResult?: string | null;
+      comment?: string | null;
+      failureDetails?: string | null;
+      executor?: string | null;
+    },
+  ) => api.patch<StepResult>(`/api/v1/executions/${executionId}/step-results/${stepResultId}`, input),
+  /** Atomic bulk step update (ADR 0015) -- used by the runner's "mark remaining as
+   * passed" action so N steps become one request, not N. */
+  bulkUpdateStepResults: (
+    executionId: string,
+    results: Array<{ stepResultId: string; status: ExecutionResultStatus; actualResult?: string | null }>,
+  ) => api.patch<{ results: StepResult[] }>(`/api/v1/executions/${executionId}/step-results`, { results }),
 };
 
 export const ServiceTokensApi = {

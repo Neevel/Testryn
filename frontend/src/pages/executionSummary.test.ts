@@ -1,8 +1,28 @@
 import { describe, expect, it } from "vitest";
-import type { ExecutionResultStatus, ExecutionTestCase } from "../api/types";
+import type { ExecutionResultStatus, ExecutionStep, ExecutionTestCase } from "../api/types";
 import { summarize } from "./executionSummary";
 
-function testCase(status: ExecutionResultStatus): ExecutionTestCase {
+function step(status: ExecutionResultStatus | null, order = 1): ExecutionStep {
+  return {
+    order,
+    action: "Do it",
+    expectedResult: "Works",
+    result:
+      status === null
+        ? null
+        : {
+            id: crypto.randomUUID(),
+            status,
+            actualResult: null,
+            comment: null,
+            failureDetails: null,
+            executedAt: null,
+            executor: null,
+          },
+  };
+}
+
+function testCase(status: ExecutionResultStatus, steps: ExecutionStep[] = []): ExecutionTestCase {
   return {
     testCaseId: crypto.randomUUID(),
     testCaseHumanId: "TC-1",
@@ -10,7 +30,7 @@ function testCase(status: ExecutionResultStatus): ExecutionTestCase {
     title: "Some test",
     description: null,
     preconditions: null,
-    steps: [],
+    steps,
     position: 1,
     result: {
       id: crypto.randomUUID(),
@@ -60,5 +80,18 @@ describe("summarize", () => {
     const summary = summarize([]);
     expect(summary.total).toBe(0);
     expect(summary.progress).toBe(0);
+  });
+
+  it("steps is null when no test case has any step-level data (pre-ADR-0015 execution)", () => {
+    const summary = summarize([testCase("PASSED", [step(null), step(null, 2)])]);
+    expect(summary.steps).toBeNull();
+  });
+
+  it("counts real step-level progress across test cases that have it", () => {
+    const summary = summarize([
+      testCase("NOT_RUN", [step("PASSED", 1), step("PASSED", 2), step("NOT_RUN", 3)]),
+      testCase("NOT_RUN", [step("FAILED", 1)]),
+    ]);
+    expect(summary.steps).toEqual({ total: 4, executed: 3 });
   });
 });

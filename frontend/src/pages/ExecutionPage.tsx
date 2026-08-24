@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { downloadUrl } from "../api/client";
 import { ExecutionsApi, ReportsApi } from "../api/endpoints";
-import type { Execution, ExecutionResultStatus, ExecutionTestCase, Report } from "../api/types";
+import type { Execution, ExecutionResultStatus, ExecutionStep, ExecutionTestCase, Report } from "../api/types";
 import { ErrorBanner, errorMessage } from "../components/ErrorBanner";
 import { EmptyState } from "../components/EmptyState";
 import { LoadingState } from "../components/LoadingState";
@@ -17,9 +17,28 @@ const STATUS_ICON: Record<ExecutionResultStatus, string> = {
   SKIPPED: "»",
   NOT_RUN: "○",
 };
+/** Same icon set, but never relying on it alone (Abschnitt 30/49): every step
+ * status is always rendered as this icon PLUS its text label PLUS the badge color. */
+const STEP_STATUS_ICON: Record<ExecutionResultStatus, string> = {
+  PASSED: "✓",
+  FAILED: "✕",
+  BLOCKED: "!",
+  SKIPPED: "–",
+  NOT_RUN: "○",
+};
+/** Applied with a single click, no dialog (Abschnitt 12: the fast path). FAILED
+ * and BLOCKED open the step detail dialog instead (Abschnitt 11). */
+const QUICK_STEP_STATUSES: ExecutionResultStatus[] = ["PASSED", "SKIPPED"];
+const DIALOG_STEP_STATUSES: ExecutionResultStatus[] = ["FAILED", "BLOCKED"];
 
 interface EditingResult {
   testCase: ExecutionTestCase;
+  initialStatus: ExecutionResultStatus;
+}
+
+interface EditingStep {
+  testCase: ExecutionTestCase;
+  step: ExecutionStep;
   initialStatus: ExecutionResultStatus;
 }
 
@@ -32,6 +51,7 @@ export function ExecutionPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [editingResult, setEditingResult] = useState<EditingResult | null>(null);
+  const [editingStep, setEditingStep] = useState<EditingStep | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -68,6 +88,63 @@ export function ExecutionPage() {
         executor: input.executor || undefined,
       });
       setEditingResult(null);
+      load();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** The one-click quick path (Abschnitt 12): PASSED/SKIPPED apply immediately,
+   * no dialog, no extra fields -- exactly what a tester clicking through a long
+   * list of steps needs to stay fast. */
+  async function quickSetStep(step: ExecutionStep, status: ExecutionResultStatus) {
+    if (!step.result) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await ExecutionsApi.updateStepResult(id, step.result.id, { status });
+      load();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveStep(input: { status: ExecutionResultStatus; actualResult: string; comment: string; failureDetails: string }) {
+    if (!editingStep?.step.result) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await ExecutionsApi.updateStepResult(id, editingStep.step.result.id, {
+        status: input.status,
+        actualResult: input.actualResult || undefined,
+        comment: input.comment || undefined,
+        failureDetails: input.failureDetails || undefined,
+      });
+      setEditingStep(null);
+      load();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Bulk "mark remaining as passed" (Abschnitt 13) -- every still-NOT_RUN step of
+   * one test case, in one atomic request instead of N. */
+  async function markRemainingStepsPassed(testCase: ExecutionTestCase) {
+    const remaining = testCase.steps.filter((s) => s.result && s.result.status === "NOT_RUN");
+    if (remaining.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await ExecutionsApi.bulkUpdateStepResults(
+        id,
+        remaining.map((s) => ({ stepResultId: s.result!.id, status: "PASSED" as const })),
+      );
       load();
     } catch (err) {
       setError(errorMessage(err));
@@ -169,7 +246,14 @@ export function ExecutionPage() {
         <div className="progress-track">
           <div className="progress-fill" style={{ width: `${summary.progress}%` }} />
         </div>
-        <span className="progress-label">{summary.progress}% executed</span>
+        <span className="progress-label">
+          Test Cases: {execution.testCases.length - summary.counts.NOT_RUN} / {execution.testCases.length} completed
+          {summary.steps && (
+            <>
+              {" · "}Steps: {summary.steps.executed} / {summary.steps.total} executed
+            </>
+          )}
+        </span>
       </div>
 
       <div className="result-meta" style={{ marginBottom: "1.5rem" }}>
@@ -204,6 +288,9 @@ export function ExecutionPage() {
           etc={etc}
           disabled={busy}
           onChooseStatus={(status) => setEditingResult({ testCase: etc, initialStatus: status })}
+          onQuickStep={quickSetStep}
+          onChooseStepStatus={(step, status) => setEditingStep({ testCase: etc, step, initialStatus: status })}
+          onMarkRemainingPassed={() => markRemainingStepsPassed(etc)}
         />
       ))}
 
@@ -259,6 +346,17 @@ export function ExecutionPage() {
         />
       )}
 
+      {editingStep && (
+        <StepDetailModal
+          testCase={editingStep.testCase}
+          step={editingStep.step}
+          initialStatus={editingStep.initialStatus}
+          busy={busy}
+          onCancel={() => setEditingStep(null)}
+          onSave={saveStep}
+        />
+      )}
+
       {pendingAction && (
         <CompletionModal
           action={pendingAction}
@@ -286,12 +384,26 @@ function RunnerCard({
   etc,
   disabled,
   onChooseStatus,
+  onQuickStep,
+  onChooseStepStatus,
+  onMarkRemainingPassed,
 }: {
   etc: ExecutionTestCase;
   disabled: boolean;
   onChooseStatus: (status: ExecutionResultStatus) => void;
+  onQuickStep: (step: ExecutionStep, status: ExecutionResultStatus) => void;
+  onChooseStepStatus: (step: ExecutionStep, status: ExecutionResultStatus) => void;
+  onMarkRemainingPassed: () => void;
 }) {
   const result = etc.result;
+  // Backward compatibility (Abschnitt 35/37): an execution created before the
+  // Step-Level Execution Results block has steps whose `result` is null -- never
+  // fabricate a status for those, just fall back to the plain read-only list.
+  const hasStepResults = etc.steps.length > 0 && etc.steps.every((s) => s.result !== null);
+  const stepsPassed = hasStepResults ? etc.steps.filter((s) => s.result!.status === "PASSED").length : 0;
+  const stepsFailed = hasStepResults ? etc.steps.filter((s) => s.result!.status === "FAILED").length : 0;
+  const anyStepNotRun = hasStepResults && etc.steps.some((s) => s.result!.status === "NOT_RUN");
+
   return (
     <div id={`tc-${etc.testCaseId}`} className={`runner-card status-${result.status}`}>
       <div className="runner-card-header">
@@ -299,6 +411,11 @@ function RunnerCard({
           <h3>
             {etc.testCaseHumanId} — {etc.title} <span className="muted">v{etc.testCaseVersionNumber}</span>
           </h3>
+          {hasStepResults && (
+            <p className="muted" style={{ margin: "0.15rem 0 0" }}>
+              {stepsPassed} / {etc.steps.length} steps passed{stepsFailed > 0 && `, ${stepsFailed} failed`}
+            </p>
+          )}
         </div>
         <StatusBadge value={result.status} />
       </div>
@@ -310,25 +427,47 @@ function RunnerCard({
         </p>
       )}
 
-      {etc.steps.length > 0 && (
-        <table>
-          <thead>
-            <tr>
-              <th style={{ width: "3rem" }}>#</th>
-              <th>Action</th>
-              <th>Expected Result</th>
-            </tr>
-          </thead>
-          <tbody>
-            {etc.steps.map((step) => (
-              <tr key={step.order}>
-                <td>{step.order}</td>
-                <td>{step.action}</td>
-                <td>{step.expectedResult}</td>
+      {etc.steps.length > 0 && !hasStepResults && (
+        <>
+          <p className="muted">Step-level results not available for this execution.</p>
+          <table>
+            <thead>
+              <tr>
+                <th style={{ width: "3rem" }}>#</th>
+                <th>Action</th>
+                <th>Expected Result</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {etc.steps.map((step) => (
+                <tr key={step.order}>
+                  <td>{step.order}</td>
+                  <td>{step.action}</td>
+                  <td>{step.expectedResult}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+
+      {hasStepResults && (
+        <div className="step-runner">
+          {etc.steps.map((step) => (
+            <StepRow
+              key={step.order}
+              step={step}
+              disabled={disabled}
+              onQuick={(status) => onQuickStep(step, status)}
+              onOpenDialog={(status) => onChooseStepStatus(step, status)}
+            />
+          ))}
+          {anyStepNotRun && (
+            <button type="button" className="btn btn-secondary btn-sm" disabled={disabled} onClick={onMarkRemainingPassed}>
+              Mark remaining as passed
+            </button>
+          )}
+        </div>
       )}
 
       {(result.comment || result.actualResult || result.failureDetails) && (
@@ -371,6 +510,148 @@ function RunnerCard({
             {result.status === status ? `✓ ${status}` : status}
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function StepRow({
+  step,
+  disabled,
+  onQuick,
+  onOpenDialog,
+}: {
+  step: ExecutionStep;
+  disabled: boolean;
+  onQuick: (status: ExecutionResultStatus) => void;
+  onOpenDialog: (status: ExecutionResultStatus) => void;
+}) {
+  const stepResult = step.result;
+  if (!stepResult) return null;
+
+  return (
+    <div className={`step-row status-${stepResult.status}`}>
+      <div className="step-row-main">
+        <span className={`step-status-icon step-status-${stepResult.status}`} aria-hidden="true">
+          {STEP_STATUS_ICON[stepResult.status]}
+        </span>
+        <div className="step-row-text">
+          <strong>
+            Step {step.order}. {step.action}
+          </strong>
+          <span className="muted">Expected: {step.expectedResult}</span>
+          {stepResult.actualResult && <span className="muted">Actual: {stepResult.actualResult}</span>}
+          {stepResult.failureDetails && (
+            <span className="muted">
+              <strong>Failure:</strong> {stepResult.failureDetails}
+            </span>
+          )}
+        </div>
+        <StatusBadge value={stepResult.status} />
+      </div>
+      <div className="step-row-actions">
+        {QUICK_STEP_STATUSES.map((status) => (
+          <button
+            key={status}
+            type="button"
+            className={`btn btn-outcome-${status} btn-sm${stepResult.status === status ? " btn-outcome-active" : ""}`}
+            disabled={disabled}
+            onClick={() => onQuick(status)}
+          >
+            {status}
+          </button>
+        ))}
+        {DIALOG_STEP_STATUSES.map((status) => (
+          <button
+            key={status}
+            type="button"
+            className={`btn btn-outcome-${status} btn-sm${stepResult.status === status ? " btn-outcome-active" : ""}`}
+            disabled={disabled}
+            onClick={() => onOpenDialog(status)}
+          >
+            {status}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StepDetailModal({
+  testCase,
+  step,
+  initialStatus,
+  busy,
+  onCancel,
+  onSave,
+}: {
+  testCase: ExecutionTestCase;
+  step: ExecutionStep;
+  initialStatus: ExecutionResultStatus;
+  busy: boolean;
+  onCancel: () => void;
+  onSave: (input: { status: ExecutionResultStatus; actualResult: string; comment: string; failureDetails: string }) => void;
+}) {
+  const stepResult = step.result;
+  const [status, setStatus] = useState<ExecutionResultStatus>(initialStatus);
+  const [actualResult, setActualResult] = useState(stepResult?.actualResult ?? "");
+  const [comment, setComment] = useState(stepResult?.comment ?? "");
+  const [failureDetails, setFailureDetails] = useState(stepResult?.failureDetails ?? "");
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    onSave({ status, actualResult, comment, failureDetails });
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2>
+          {testCase.testCaseHumanId} — Step {step.order}
+        </h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          {step.action}
+        </p>
+        <form onSubmit={submit}>
+          <div className="form-row">
+            <label>Status</label>
+            <select value={status} onChange={(e) => setStatus(e.target.value as ExecutionResultStatus)}>
+              {(["NOT_RUN", ...RESULT_ACTIONS] as ExecutionResultStatus[]).map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-row">
+            <label>Actual Result</label>
+            <textarea
+              value={actualResult}
+              onChange={(e) => setActualResult(e.target.value)}
+              placeholder="What was actually observed? (optional)"
+            />
+          </div>
+          <div className="form-row">
+            <label>Failure Details</label>
+            <textarea
+              value={failureDetails}
+              onChange={(e) => setFailureDetails(e.target.value)}
+              placeholder="Stack trace, error message, … (optional)"
+            />
+          </div>
+          <div className="form-row">
+            <label>Comment</label>
+            <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Optional" />
+          </div>
+          <div className="modal-actions">
+            <button type="button" className="btn btn-secondary" onClick={onCancel} disabled={busy}>
+              Cancel
+            </button>
+            <button type="submit" className="btn" disabled={busy}>
+              Save
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -517,6 +798,12 @@ function CompletionModal({
           <div className="confirm-banner">
             <strong>Heads up:</strong> {summary.counts.NOT_RUN} test case(s) are still NOT_RUN. You can complete the
             execution anyway, but confirm this is intentional.
+          </div>
+        )}
+        {action === "COMPLETE" && summary.steps && summary.steps.total - summary.steps.executed > 0 && (
+          <div className="confirm-banner">
+            <strong>Heads up:</strong> {summary.steps.total - summary.steps.executed} step(s) are still not run.
+            Complete execution anyway?
           </div>
         )}
         {action === "ABORT" && (

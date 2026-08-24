@@ -20,6 +20,15 @@ export interface Step {
   expectedResult: string;
 }
 
+/** A step as it appears inside an execution: the same action/expectedResult, plus
+ * its result. `result` is `null` only for an execution created before the
+ * Step-Level Execution Results block (ADR 0015) -- no step results were ever
+ * backfilled for old executions. Treat `null` as "not available for this
+ * execution", not as NOT_RUN. */
+export interface ExecutionStep extends Step {
+  result: StepResult | null;
+}
+
 export interface TestCaseVersion {
   id: string;
   versionNumber: number;
@@ -121,6 +130,17 @@ export interface ExecutionResult {
   failureDetails: string | null;
 }
 
+/** A single step's outcome (ADR 0015) -- no `durationMs`, not a step-level field. */
+export interface StepResult {
+  id: string;
+  status: ExecutionResultStatus;
+  actualResult: string | null;
+  comment: string | null;
+  failureDetails: string | null;
+  executedAt: string | null;
+  executor: string | null;
+}
+
 export interface ExecutionTestCase {
   testCaseId: string;
   testCaseHumanId: string;
@@ -128,7 +148,7 @@ export interface ExecutionTestCase {
   title: string;
   description: string | null;
   preconditions: string | null;
-  steps: Step[];
+  steps: ExecutionStep[];
   position: number;
   result: ExecutionResult;
 }

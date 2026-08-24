@@ -773,6 +773,71 @@ textarea {
   color: var(--color-text-faint);
 }
 
+.step-runner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+.step-row {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  background: var(--color-surface);
+}
+.step-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  flex: 1 1 20rem;
+  min-width: 0;
+}
+.step-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.step-row-text strong {
+  font-weight: 500;
+}
+.step-row-actions {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+.step-status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
+  border-radius: 50%;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: white;
+  background: var(--color-border-strong);
+}
+.step-status-PASSED {
+  background: var(--color-success);
+}
+.step-status-FAILED {
+  background: var(--color-danger);
+}
+.step-status-BLOCKED,
+.step-status-SKIPPED {
+  background: var(--color-warning);
+}
+.step-status-NOT_RUN {
+  background: var(--color-border-strong);
+}
+
 /* --------------------------------------------------------------------------
    Modals
    -------------------------------------------------------------------------- */
