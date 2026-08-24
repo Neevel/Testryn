@@ -110,6 +110,7 @@ API nutzbar. Vollständige, generierte Referenz zur Laufzeit unter
 /api/v1/executions/{id}/results/{resultId}
 /api/v1/executions/{id}/results        (bulk update, for CI pipelines -- see docs/ci-integration.md)
 /api/v1/executions/{id}/reports
+/api/v1/requirement-links/coverage     (provider-neutral coverage view, e.g. for the Jira Forge panel -- see docs/jira-forge-integration.md)
 /api/v1/service-tokens                 (auth management, requires testryn:admin -- see docs/security.md)
 ```
 
@@ -141,3 +142,12 @@ mvn test
 Wie eine externe Pipeline automatisierte Testergebnisse an Testryn meldet (Test-Case-
 Mapping über `automationReference`, Bulk-Result-Update-API, das `testryn-publisher`-
 CLI-Tool): [docs/ci-integration.md](docs/ci-integration.md).
+
+## Jira Forge Issue Panel
+
+`integrations/jira-forge` ist eine eigenständige Atlassian-Forge-App: ein read-only
+Testryn-Coverage-Panel direkt in der Jira-Story/Task/Bug-Ansicht (verknüpfte Test
+Cases, Steps, Expected Results, letzter Execution-Status). Testryn bleibt Source of
+Truth, Jira speichert keine Kopie der Testdaten. Architektur, Setup, Deployment,
+Security: [docs/jira-forge-integration.md](docs/jira-forge-integration.md),
+Entscheidung: [ADR 0014](docs/adr/0014-jira-forge-integration.md).
