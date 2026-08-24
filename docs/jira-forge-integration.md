@@ -92,7 +92,16 @@ so a caller can offer "view all" instead of silently truncating (Abschnitt 23).
         "executionName": "Regression Login - Iteration 2",
         "status": "PASSED",
         "executedAt": "2026-08-24T10:00:00Z",
-        "durationMs": 1420
+        "durationMs": 1420,
+        "executor": "ci",
+        "steps": [
+          {
+            "position": 1,
+            "action": "Enter valid username",
+            "expectedResult": "Username is accepted",
+            "result": { "status": "PASSED", "actualResult": "Username is accepted", "failureDetails": null }
+          }
+        ]
       }
     }
   ],
@@ -103,14 +112,21 @@ so a caller can offer "view all" instead of silently truncating (Abschnitt 23).
 `latestExecution` is `null` only when the test case has never been added to any
 execution at all -- a test case added to an execution that has not run yet still has
 a real `latestExecution` with `status: "NOT_RUN"` (Abschnitt 14: that is a real
-execution, not "no execution yet").
+execution, not "no execution yet"). `latestExecution.steps` is that execution's own
+pinned step snapshot with its actual result each (ADR 0015) -- an empty list means
+step-level results were never reported for that execution (an execution that
+predates the Step-Level Execution Results block, or a testcase-level-only
+automation result such as JUnit, Abschnitt 20/36/35) -- the panel shows "Step-level
+results not reported for this execution" rather than fabricating a per-step status.
 
-**Query strategy** (Abschnitt 22): the whole response is built from exactly two
+**Query strategy** (Abschnitt 22/25): the whole response is built from exactly two
 database round trips regardless of how many test cases are linked -- one batch
 fetch for the test cases (with their current version and steps, via the existing
 entity graph), and one batch "latest execution per test case" query (a single JPQL
-correlated-subquery, `ExecutionTestCaseRepository.findLatestByTestCaseIds`) --
-never one query per test case. Covered by a dedicated regression test
+correlated-subquery, `ExecutionTestCaseRepository.findLatestByTestCaseIds`, now also
+fetch-joining each step result and its step) -- never one query per test case, and
+adding step data did not add a third round trip. Covered by a dedicated regression
+test
 (`RequirementCoverageTest.theQueryCountDoesNotGrowLinearlyWithTheNumberOfLinkedTestCases`)
 using Hibernate's own query-execution counter, not just an assumption about the
 code's shape.
@@ -228,11 +244,23 @@ does not repeat it). States:
   (Abschnitt 20).
 - **Coverage summary + list**: real counts only (`N linked tests · X passed · Y
   failed · ...`, Abschnitt 15), each linked test case collapsed by default
-  (Abschnitt 12) showing id/title/status/version/priority and its latest-execution
-  status as text + icon + color together (Abschnitt 13, never color alone).
-  Expanding a card reveals preconditions and steps with their expected results.
-  Every card has an "Open in Testryn" link; a card with a latest execution also gets
-  "Open latest execution" (Abschnitt 16).
+  (Abschnitt 12/28) showing id/title/status/version/priority, its latest-execution
+  status as text + icon + color together (Abschnitt 13/30, never color alone), and
+  a `X / Y steps passed` line when step data exists.
+  Expanding a card (Abschnitt 29) reveals preconditions and, for each step: its own
+  status (✓/✕/!/–/○, Abschnitt 30), action, expected result, actual result, and
+  failure details if it failed. A failed test case never truncates its step list --
+  the failing step is visible the instant the card expands, no extra click
+  (Abschnitt 32); an all-green case with many steps still collapses to a short
+  preview with a "Show all N steps" link (Abschnitt 31). Executor is shown as a
+  compact `CI`/`Manual` badge next to the status (Abschnitt 33/34, from the same
+  `executor` field the runner and publisher already write -- no new source-of-truth
+  concept). A test case whose latest execution has no step data (pre-ADR-0015, or a
+  JUnit/testcase-level-only automation result) shows "Step-level results not
+  reported for this execution" and falls back to the test case's plain current-step
+  list as a preview, rather than showing nothing or fabricating a status (Abschnitt
+  35/36). Every card has an "Open in Testryn" link; a card with a latest execution
+  also gets "Open latest execution" (Abschnitt 16).
 - **Empty** (no linked test cases): "No Testryn test cases linked" with a link to
   Testryn -- no create-from-Jira action in this MVP (Abschnitt 17).
 - **Error** (Testryn unreachable): "Testryn is currently unavailable. Existing Jira

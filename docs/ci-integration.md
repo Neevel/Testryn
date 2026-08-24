@@ -215,6 +215,20 @@ is untrusted input -- the parser is hardened against XXE).
 `BLOCKED` is never produced by the JUnit importer -- there is no JUnit XML construct
 that means "blocked", and guessing one would misrepresent the actual test outcome.
 
+**Step-level results** (ADR 0015): JUnit XML has no concept of a Testryn test
+case's individual steps, so `publish-junit` only ever writes the testcase-level
+result above -- it never touches step results, which stay exactly `NOT_RUN`. This
+is intentional, not a gap: a JUnit `PASSED` does not imply any particular step
+passed, and inventing per-step PASSED values from a testcase-level result would
+misrepresent the actual test outcome the same way a fabricated `BLOCKED` would. Both
+the Testryn runner and the Jira Forge panel show this state honestly ("Step-level
+results not reported for this execution"), not as if every step had run. A future
+framework-native adapter that *does* report real step outcomes (Selenium,
+Playwright, a custom harness) would write to the same step-result API a manual
+tester uses (`PATCH .../executions/{id}/step-results`, see
+`docs/execution-model.md`) -- nothing in this block's design forecloses that; no
+such adapter is built here.
+
 ### Jenkins
 
 ```groovy
