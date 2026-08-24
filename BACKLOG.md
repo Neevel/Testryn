@@ -51,19 +51,53 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 - [x] `docs/jira-forge-integration.md`, ADR 0014
 - [x] 13 Backend- + 15 Forge-Tests grün; Backend-Erreichbarkeit real per
       `cloudflared`-Tunnel verifiziert
-- [ ] **Offen**: `forge deploy`/`forge install` in die echte Jira-Site, Live-Test
-      gegen EVAL-47, Empty-State an einem unverlinkten Issue, simulierte
-      Testryn-Downtime im echten Panel — bewusst dem Nutzer selbst überlassen
-      (Atlassian-Account-Login nötig); Schritt-für-Schritt-Anleitung fertig in
-      `docs/jira-forge-integration.md`.
+- [x] `forge login`/`register`/`deploy`/`install` real durchgeführt (App live in
+      `ki-meets-testautomation.atlassian.net`); volle Live-Verifikation inkl.
+      echter EVAL-47-Coverage-Daten im Step-Level-Execution-Results-Block
+      nachgeholt
+- [ ] **Weiterhin offen**: Empty-State an einem unverlinkten Issue,
+      simulierte Testryn-Downtime im echten Panel, tatsächliche visuelle
+      Browser-Kontrolle des Panels (kein angemeldeter Atlassian-Browser in der
+      Session verfügbar) — Coverage-Daten dafür sind live bestätigt, nur die
+      UI-Interaktion selbst blieb ungeprüft.
+
+## Now (Step-Level Execution Results, siehe PROJECT_STATUS.md)
+
+- [x] `ExecutionStepResult` (referenziert `TestStep` direkt, keine
+      Snapshot-Kopie-Tabelle), dieselbe `ExecutionResultStatus` wie Testcase-Ebene
+- [x] Aggregationsregel `deriveStatusFromSteps()`, ausgelöst ausschließlich durch
+      Step-Level-Writes; Testcase-Level-Direkt-Writes (CI/JUnit) bleiben unverändert
+- [x] `PATCH .../step-results/{id}` + atomarer Bulk-`PATCH .../step-results`
+      (adressiert über `stepResultId`), Migration `0006`
+- [x] Completed/Aborted-Write-Guard (vorheriger Next-Punkt) für Testcase- UND
+      Step-Level, einzeln und Bulk
+- [x] Runner: Step-für-Step-Bewertung, Ein-Klick PASSED/SKIPPED, Detaildialog für
+      FAILED/BLOCKED, „Mark remaining as passed", Step-Fortschritt in der
+      Summary-Leiste
+- [x] Forge-Panel: Step-Details mit Failure-First-UX, CI/Manual-Badge,
+      Rückwärtskompatibilität für Alt-Executions und JUnit-only-Ergebnisse
+- [x] `TESTRYN_JIRA_*`-Testisolation (`AbstractIntegrationTest`) — `mvn test`
+      jetzt deterministisch unabhängig vom lokalen Environment
+- [x] `docs/execution-model.md` (neu), ADR 0015
+- [x] Vollständiger Pflicht-Workflow (Testcase mit 4 Steps → Execution →
+      2×PASSED/1×FAILED/1×NOT_RUN → Testcase FAILED → Jira-Panel zeigt dieselben
+      Daten → Testcase-Versionsupdate → alte Execution unverändert) live gegen
+      den echten Stack UND die echte Jira-Site durchgespielt, nicht nur getestet
+- [ ] **Weiterhin offen**: dieselbe visuelle Browser-Lücke wie beim Jira-Forge-Block
+      oben — Coverage-Daten inkl. Step-Ebene sind live bestätigt, die UI-Darstellung
+      selbst blieb visuell ungeprüft.
 
 ## Next
 
 - **Human User Authentication** (Login, Sessions) — bewusst nicht in diesem Block
   (Abschnitt 9/36); Service Tokens sind explizit Maschinen-Credentials, keine
   Personen-Identität. Das Frontend braucht bis dahin weiterhin die
-  Dev-Token-Übergangslösung aus diesem Block. Mit einem echten externen Consumer
-  der API (Jira-Nutzer über das Forge-Panel) jetzt zusätzlich relevanter als zuvor.
+  Dev-Token-Übergangslösung. Mit einem echten externen Consumer der API
+  (Jira-Nutzer über das Forge-Panel) jetzt zusätzlich relevanter als zuvor.
+- **Framework-natives Step-Reporting** (Selenium, Playwright, eigenes Harness) —
+  die Step-Result-API ist dafür vorbereitet (dieselbe `PATCH .../step-results`, die
+  auch der Runner nutzt), aber kein Adapter dafür in diesem Block gebaut
+  (Abschnitt 21/54).
 - **Forge-Panel-Schreibaktionen** (Create Test Case, Link Existing, Start
   Execution) — Architektur bewusst nicht verbaut (eigener `testryn:write`-Token,
   kein stiller Scope-Ausbau des bestehenden Read-Tokens), aber explizit nicht in
@@ -72,10 +106,11 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 - **Weitere Report-Importer** (Playwright, Cypress, Allure, NUnit, pytest) — dieselbe
   `ResultBatchReader`-Schnittstelle wie beim jetzt implementierten JUnit-XML-Adapter,
   jeweils ein kleinerer, eigenständiger Block.
-- **Execution-State-Guard**: Bulk-/Einzel-Result-Endpoint lehnen aktuell keine
-  Schreibversuche auf eine `COMPLETED`/`ABORTED`-Execution ab — beim JUnit-XML-Block
-  entdeckt und bewusst nicht dort mitgelöst (keine Domain-Regel client-seitig
-  duplizieren, die serverseitig noch gar nicht existiert).
+- **Test-Key-Kollisionsfix**: `System.nanoTime() % 100000` als Projekt-Key-Generator
+  in vielen Backend-Testklassen kollidiert selten, aber real bei sehr vielen Tests
+  in einem Lauf (im Step-Level-Execution-Results-Block einmalig reproduziert) — ein
+  gemeinsamer, kollisionsfreier Test-Key-Helfer (z. B. `UUID`-basiert) wäre ein
+  kleiner, eigenständiger Aufräum-Block.
 - **API-Rate-Limiting** — noch nicht nötig, aber jetzt, wo Requests einem Token
   zugeordnet sind, technisch einfacher anzuschließen als vorher.
 - **Secret Rotation** für Service Tokens (z. B. "neuen Token erzeugen, alten erst

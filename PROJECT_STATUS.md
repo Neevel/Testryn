@@ -7,21 +7,173 @@ Stand: 2026-08-24
 
 ## Aktueller Meilenstein
 
-**Jira Forge Issue Panel: implementiert, gegen den echten Stack unit- und
-integrationsgetestet, Backend-Erreichbarkeit live per Tunnel verifiziert —
-`forge deploy`/`forge install` in die reale Jira-Site bewusst dem Nutzer selbst
-überlassen (siehe „Jira Forge Issue Panel" unten für den genauen Verifikationsstand
-und was noch offen ist).** Ein neues, provider-neutrales Read-API
-(`GET /api/v1/requirement-links/coverage`) plus eine eigenständige Forge-App
-(`integrations/jira-forge`, UI Kit, kein iframe) zeigen verlinkte Testryn-Test-Cases
-samt Steps, Expected Results und letztem Execution-Status direkt in der
-Jira-Story/Task/Bug/Epic-Ansicht — read-only, Testryn bleibt Source of Truth, Jira
-speichert keine Kopie der Testdaten (ADR 0014).
+**Step-Level Execution Results: implementiert und live gegen den echten Stack UND
+die echte Jira-Site verifiziert.** Ein Test Case zeigt jetzt nicht mehr nur
+`FAILED`, sondern welcher Step genau fehlgeschlagen ist, mit erwartetem/tatsächlichem
+Ergebnis und Failure Details — im Testryn Runner (Step-für-Step-Bewertung, ein Klick
+für PASSED/SKIPPED, Detaildialog für FAILED/BLOCKED) und im Jira Forge Panel
+(dieselben Daten, „Failure First"-Darstellung). Testcase-Level-Status wird beim
+Bearbeiten von Steps automatisch aus deren Ergebnissen abgeleitet, ohne den
+bestehenden, unabhängigen Testcase-Level-Schreibpfad (CI/JUnit) zu verändern —
+Automatisierung ohne Step-Reports bleibt ehrlich als „nicht berichtet" sichtbar,
+nie als erfundenes PASSED. Der seit Block 4 offene Completed/Aborted-Write-Guard
+wurde dabei mitgelöst. Details siehe „Step-Level Execution Results" unten.
 
-Die vorherigen Blöcke (JUnit XML Publisher Adapter; API & Service Security; Jira
-Cloud live-verifiziert; Bulk-Result-Update, `automationReference`, CI-Publisher)
-sind unverändert gültig — siehe Git-Log und die Abschnitte weiter unten in dieser
-Datei für Details.
+**Nachtrag zum vorherigen Block**: das dort als offen dokumentierte `forge
+deploy`/`forge install` wurde in diesem Block nachgeholt — die Forge-App ist jetzt
+tatsächlich live in der echten Jira-Site installiert und wurde in diesem Block
+direkt gegen echte EVAL-47-Daten (inkl. der neuen Step-Ebene) verifiziert.
+
+Die vorherigen Blöcke (Jira Forge Issue Panel; JUnit XML Publisher Adapter; API &
+Service Security; Jira Cloud live-verifiziert; Bulk-Result-Update,
+`automationReference`, CI-Publisher) sind unverändert gültig — siehe Git-Log und die
+Abschnitte weiter unten in dieser Datei für Details.
+
+## Step-Level Execution Results (ADR 0015)
+
+**Domain** (`backend/`, Modul `execution`):
+
+- Neue Entity `ExecutionStepResult` — referenziert `TestStep` direkt statt dessen
+  Inhalt zu kopieren: `TestStep`-Zeilen sind bereits unveränderlich und an genau
+  eine, bereits gepinnte `TestCaseVersion` gebunden (ADR 0002/0003) — eine separate
+  Snapshot-Kopie-Tabelle wäre redundant gewesen (vollständige Analyse in ADR 0015).
+  Dasselbe `ExecutionResultStatus`-Enum wie auf Testcase-Ebene (kein Parallelmodell).
+- `ExecutionTestCase.initializeStepResults()` — eager, ein `NOT_RUN`-Result je Step,
+  beim Execution-Anlegen (kein Lazy-Auto-Create).
+- `ExecutionTestCase.deriveStatusFromSteps()` — die Aggregationsregel aus Abschnitt 9
+  wörtlich umgesetzt: ein FAILED-Step → `FAILED`; sonst ein BLOCKED-Step → `BLOCKED`;
+  sonst alle PASSED → `PASSED`; sonst alle ausgeführten Steps SKIPPED (und
+  mindestens einer) → `SKIPPED`; sonst `NOT_RUN`/unvollständig.
+- `ExecutionResult.deriveStatus(status)` — neue, bewusst schmale Methode, die NUR
+  `status`/`executedAt` setzt, nie `comment`/`durationMs`/`executor`/`actualResult`/
+  `failureDetails` — verhindert, dass eine aus Steps abgeleitete Statusänderung
+  einen bereits gesetzten manuellen Kommentar oder eine CI-gemeldete Dauer löscht.
+- Zwei unabhängige Schreibpfade zum Testcase-Level-Status: direkter Write (CI/JUnit/
+  manuell, unverändert) berührt Steps nie; Ableitung aus Steps läuft ausschließlich
+  als Seiteneffekt eines Step-Level-Writes (löst Abschnitt 9 und Abschnitt 20/36
+  gleichzeitig, ohne dritte Konzeptschicht).
+
+**API:**
+
+- `PATCH /api/v1/executions/{id}/step-results/{stepResultId}` — Einzel-Step,
+  JSON-Merge-Patch, dieselbe Semantik wie der bestehende Testcase-Level-Endpoint.
+- `PATCH /api/v1/executions/{id}/step-results` — atomarer Bulk-Update, adressiert
+  ausschließlich über `stepResultId` (bewusst nicht die im Auftrag skizzierte
+  `executionTestCaseId`+`stepReference`-Komposition — ein Weg, keine unnötige
+  REST-Tiefe). Alles-oder-nichts wie der bestehende Bulk-Testcase-Endpoint.
+- Bestehender `GET /api/v1/executions/{id}` liefert jetzt je Step ein eingebettetes
+  `result` (bzw. `null` für Alt-Executions) — kein separater Step-Listen-Endpoint
+  nötig, da die volle Execution-Antwort das bereits abdeckt (Abschnitt 17 erlaubt
+  das explizit, wenn das bestehende Design bereits passt).
+- **Completed/Aborted-Guard (Abschnitt 50, seit Block 4 offener Backlog-Punkt)**:
+  `ExecutionService.requireWritable(execution)` lehnt jeden Result-Write — Testcase-
+  Level, Step-Level, einzeln oder Bulk — mit `409` ab, sobald eine Execution
+  `COMPLETED`/`ABORTED` ist. `CREATED`/`RUNNING` erlauben Writes. Der CI-Publisher
+  brauchte keine eigene Anpassung — er nutzt denselben, jetzt geschützten
+  Bulk-Endpoint.
+- **Jira-Forge-Coverage-API erweitert**: `latestExecution` trägt jetzt `executor`
+  und `steps` (Position, Action, Expected, Result mit Status/Actual/Failure).
+  `ExecutionTestCaseRepository.findLatestByTestCaseIds` fetch-joint Step-Ergebnisse
+  in derselben Abfrage — der bestehende N+1-Regressionstest lief unverändert
+  weiter grün, mit Step-Daten in der Antwort.
+
+**Runner** (`frontend/`):
+
+- Jeder Step ist eine eigene Zeile mit vier Quick-Actions. PASSED/SKIPPED wenden
+  sich mit einem Klick an, ohne Dialog (Abschnitt 12). FAILED/BLOCKED öffnen einen
+  kleinen Detaildialog für Actual Result/Comment/Failure Details (Abschnitt 11).
+  „Mark remaining as passed" markiert alle noch offenen Steps eines Testcases in
+  einer atomaren Bulk-Anfrage (Abschnitt 13).
+  Status immer als Icon + Text + Farbe (nie nur Farbe, Abschnitt 30/49).
+- Testcase-Karte zeigt „X / Y steps passed"; die Execution-Summary-Leiste zeigt
+  jetzt „Test Cases: N / M completed" UND „Steps: N / M executed" (Abschnitt 14/15);
+  die Completion-Warnung hat jetzt zusätzlich einen Step-bezogenen Hinweis
+  (Abschnitt 16).
+- Rückwärtskompatibel: Executions ohne Step-Daten (vor diesem Block) fallen sauber
+  auf die alte, reine Lesetabelle zurück, mit explizitem Hinweis statt Absturz.
+
+**Forge:**
+
+- Aufgeklappte Testcase-Karte zeigt jeden Step des `latestExecution`-Snapshots mit
+  echtem Ergebnis (Status-Icon+Text+Farbe, Action, Expected, Actual, Failure bei
+  Fehlschlag). Ein fehlgeschlagener Testcase truncatet seine Step-Liste nie —
+  der fehlgeschlagene Step ist sofort sichtbar (Abschnitt 32, „Failure First"); ein
+  komplett grüner Fall mit vielen Steps bleibt kompakt mit „Show all N steps"
+  (Abschnitt 31). Kompaktes CI/Manual-Badge aus dem bestehenden `executor`-Feld
+  (Abschnitt 33/34, keine neue Identitätsdomäne). Fehlende Step-Daten (Alt-Execution
+  oder JUnit-testcase-level-only) → „Step-level results not reported for this
+  execution" statt Absturz oder erfundenem Status (Abschnitt 35/36).
+
+**Automatisierung (JUnit):** `publish-junit` schreibt weiterhin ausschließlich den
+Testcase-Level-Status; Step-Ergebnisse bleiben `NOT_RUN`, nie erfunden. Live mit dem
+echten Publisher-Jar gegen die reale Surefire-Fixture aus dem vorigen Block
+verifiziert (siehe Live-Verifikation unten). Ein framework-natives Step-Reporting
+(Selenium, Playwright, eigenes Harness) könnte künftig dieselbe Step-API nutzen —
+kein Adapter dafür in diesem Block gebaut (BACKLOG.md).
+
+**Tests:**
+
+- `StepResultTest` (23), `ExecutionWriteGuardTest` (7),
+  `ExecutionSnapshotRegressionTest` (1, die in Abschnitt 43 geforderte
+  Pflicht-Regression), `RequirementCoverageTest` (+5).
+- `AbstractIntegrationTest`: `TESTRYN_JIRA_*`-Isolation hinzugefügt (Abschnitt 51) —
+  drei zuvor umgebungsabhängig fehlschlagende `RequirementWorkflowTest`-Assertions
+  liefen mit echten Jira-Env-Vars weiterhin deterministisch grün.
+
+**`cd backend && mvn test`: 155/155 grün** (150 vorher + 5 neu in
+`RequirementCoverageTest`, plus 23+7+1 neue Testklassen). Eine vorbestehende,
+bereits vor diesem Block dokumentierte Testflakiness (`System.nanoTime() % 100000`
+als Projekt-Key-Generator, seltene Kollision bei sehr vielen Tests in Folge) trat
+einmalig bei einem Volllauf auf, verschwand beim erneuten Lauf, in eigenen neuen
+Testklassen durch einen zusätzlichen Zähler abgesichert — kein Codefix am
+bestehenden, gemeinsamen Muster in diesem Block (siehe „Bekannte Einschränkungen").
+**`cd integrations/jira-forge && npm test`: 15/15 grün** (unverändert, Resolver-Ebene
+reicht neue Felder nur transparent durch). **`cd frontend`: `npm run build`
+fehlerfrei, `npm run test`: 7/7 grün** (5 vorher + 2 neu für Step-Progress).
+**`cd tools/testryn-publisher && mvn test`: 82/82 grün** (unverändert, Regression
+bestätigt).
+
+### Live-Verifikation gegen den echten Stack UND die echte Jira-Site
+
+- **Backend live** (`docker compose build backend frontend && ... up -d`): echte
+  Migration `0006` angewendet, neuer Endpoint erreichbar.
+- **Kompletter Pflicht-Workflow (Abschnitt 56) live durchgespielt**, nicht nur per
+  Unit-Test: Testcase mit 4 Steps angelegt (`STEP1-TC-1`), mit EVAL-47 verlinkt
+  (echte Jira-Anreicherung bestätigt), Execution erstellt, Step 1+2 PASSED, Step 3
+  FAILED (mit `actualResult`/`failureDetails`), Step 4 bewusst `NOT_RUN` gelassen —
+  Testcase-Level-Status automatisch auf `FAILED` abgeleitet, per echtem `GET`
+  bestätigt. Testcase danach auf v2 aktualisiert (Step 1 umbenannt, Step 5 neu) —
+  Execution #1, erneut abgefragt, zeigte weiterhin exakt die ursprünglichen 4 Steps
+  mit Original-Wortlaut und Original-Ergebnissen; eine neue Execution sah korrekt
+  v2 mit 5 frischen NOT_RUN-Steps.
+- **Completed-Guard live bestätigt**: Execution auf `COMPLETED` gesetzt (`200`),
+  anschließender Step-Write → echtes `409`.
+- **JUnit-Pfad live bestätigt** (Abschnitt 57): echter `testryn-publisher.jar`-Lauf
+  (`publish-junit`) gegen eine reale, aus `mvn test` erzeugte Surefire-XML (aus dem
+  vorigen Block wiederverwendete Fixture) → Testcase-Level `PASSED`/`executor: ci`,
+  Step-Ergebnis blieb `NOT_RUN` — keine erfundenen Step-Passes.
+- **Jira-Forge-Coverage-API live bestätigt**: `GET .../requirement-links/coverage`
+  gegen EVAL-47 lieferte die neuen `steps`/`executor`-Felder korrekt für die neue
+  Execution UND zeigte für eine echte, ältere Execution aus einem früheren Block
+  (`MS2-TC-1`) korrekt eine leere `steps`-Liste (echter, nicht simulierter
+  Rückwärtskompatibilitäts-Fall).
+- **Forge-App live deployed und aktualisiert**: `forge lint` (im Rahmen von `forge
+  deploy`) fand keine Probleme; `forge deploy -e development` erfolgreich (App-Version
+  3.1.0); `forge install list` bestätigt „Up-to-date" für die echte Installation in
+  `ki-meets-testautomation.atlassian.net`.
+- **Bekannte Lücke dieser Verifikation**: die tatsächliche visuelle Kontrolle des
+  Panels im Jira-Browser-UI konnte in dieser Session nicht durchgeführt werden — der
+  isolierte Browser dieser Session hat keine angemeldete Atlassian-Session, und
+  „Claude in Chrome" (echter, angemeldeter Browser) war in dieser Umgebung nicht
+  verbunden. Die vom Panel konsumierten Daten sind jedoch vollständig über die
+  Coverage-API live bestätigt (identisch zu dem, was die UI Kit-Komponenten
+  rendern), und `forge lint`/`deploy` liefen ohne Fehler durch. Der Nutzer wurde
+  gebeten, bei Gelegenheit selbst einen kurzen visuellen Blick auf EVAL-47 zu
+  werfen.
+- Für die Verifikation wurde ein vom Nutzer selbst über die Settings-UI erzeugter,
+  temporärer Token verwendet (nicht per Direkt-DB-Insert dieses Mal) — Revoke liegt
+  beim Nutzer, da die Token-Liste mehrere Kandidaten ohne eindeutige Zuordnung
+  zeigte und ein Blind-Revoke-Risiko vermieden wurde.
 
 ## Jira Forge Issue Panel (ADR 0014)
 
@@ -112,15 +264,13 @@ grün** (unverändert, nicht von diesem Block betroffen).
   `docs/jira-forge-integration.md` enthält die vollständige Schritt-für-Schritt-
   Anleitung (`forge login` → `forge register` → dedizierter `testryn:read`-Token
   → `forge variables set --encrypt` → `forge deploy` → `forge install`).
-- **Damit noch offen**: die eigentliche Live-Verifikation gegen EVAL-47 in einer
-  echten Jira-Story (Abschnitt 39/40), der Empty-State an einem unverlinkten Issue
-  (Abschnitt 41), die simulierte Testryn-Downtime im echten Panel (Abschnitt 42) und
-  die Browser-seitige Security-Prüfung „Token nie im UI-Payload sichtbar"
-  (Abschnitt 43, Teil „Browser") — all das erfordert die tatsächliche
-  Forge-Installation, die der Nutzer nach dieser Session selbst durchführt. Die
-  Token-Handling-Garantien selbst (nie im Resolver-Ergebnis, nie geloggt) sind
-  bereits vollständig durch `test/testrynClient.test.js` abgedeckt und geben hohe
-  Zuversicht, dass die Live-Prüfung dieselben Garantien bestätigen wird.
+- **Nachtrag (Step-Level-Execution-Results-Block)**: `forge login`/`forge register`/
+  `forge deploy`/`forge install` wurden vom Nutzer zwischen den Blöcken tatsächlich
+  durchgeführt — die App ist real installiert in `ki-meets-testautomation.atlassian.net`.
+  Die volle Live-Verifikation gegen EVAL-47 (inkl. der neuen Step-Ebene) erfolgte im
+  Step-Level-Execution-Results-Block, siehe dessen eigenen Abschnitt oben. Die
+  Empty-State- und Downtime-Simulation-Prüfungen sowie die tatsächliche visuelle
+  Browser-Kontrolle des Panels stehen weiterhin aus (siehe dortige „Bekannte Lücke").
 
 ## JUnit XML Import & CI Adapter (ADR 0013)
 
@@ -567,25 +717,32 @@ Docker-Compose-Stack.
 - Kein Playwright-/Cypress-/Allure-Importer (JUnit-XML ist jetzt implementiert,
   siehe oben) — Architektur weiterhin vorbereitet (`ResultBatchReader`) für die
   übrigen Formate.
-- Kein Execution-State-Guard, der das Schreiben von Results in eine
-  `COMPLETED`/`ABORTED`-Execution verhindert — geprüft, existiert aktuell weder für
-  den Bulk- noch den Einzel-Endpoint; außerhalb des Scopes dieses Blocks
-  („nicht Client-seitig Domainregeln duplizieren, die serverseitig noch gar nicht
-  existieren"), als Next-Punkt vorgemerkt.
-- `RequirementWorkflowTest` schlägt in dieser lokalen Entwicklungsumgebung mit 3
-  Fehlern fehl, wenn `TESTRYN_JIRA_*`-Umgebungsvariablen mit echten Zugangsdaten
-  gesetzt sind (die Tests nehmen „Jira nicht konfiguriert" an) — reproduziert
-  isoliert mit und ohne diese Variablen, bestätigt umgebungsbedingt, keine
-  Regression dieses Blocks, kein Fix hier vorgenommen.
+- ~~Kein Execution-State-Guard...~~ **Gelöst im Step-Level-Execution-Results-Block**:
+  `ExecutionService.requireWritable` lehnt Result-Writes (Testcase- und Step-Level,
+  einzeln und Bulk) in `COMPLETED`/`ABORTED`-Executions jetzt mit `409` ab, live
+  bestätigt.
+- ~~`RequirementWorkflowTest` schlägt bei gesetzten `TESTRYN_JIRA_*`-Variablen
+  fehl...~~ **Gelöst im Step-Level-Execution-Results-Block**: `AbstractIntegrationTest`
+  erzwingt jetzt eine „nicht konfiguriert"-Jira-Verbindung für die gesamte
+  Integrationstestsuite unabhängig vom echten Environment (Abschnitt 51), verifiziert
+  durch einen erneuten Lauf mit echten Zugangsdaten weiterhin gesetzt.
 - `automationReference` ist nicht Teil des Test-Case-Anlage-Formulars im Frontend
   (`NewTestCaseForm`), nur im Edit-Formular — bewusst minimal gehalten; ein Test
   Case bekommt seine Automation-Referenz typischerweise erst, wenn die
   Automatisierung selbst existiert, meist nach der manuellen Erstanlage.
 - Vereinzelt beobachtete Testflakiness bei sehr schnell aufeinanderfolgenden
   `mvn test`-Läufen in derselben Session (`System.nanoTime() % 100000` als
-  Projekt-Key-Generator in einigen älteren Testklassen, seltene Kollision) — nicht
-  sicherheitsrelevant, kein Codefix in diesem Block, bei Bedarf später auf
-  `UUID`-basierte Testschlüssel umstellen.
+  Projekt-Key-Generator in einigen älteren Testklassen, seltene Kollision) — im
+  Step-Level-Execution-Results-Block real reproduziert (ein Fehlschlag bei einem
+  von zwei Volläufen, isoliert immer grün), in den dort neu hinzugekommenen
+  Testklassen bereits durch einen zusätzlichen Zähler abgesichert; ein
+  repo-weiter Fix (z. B. `UUID`-basierte Testschlüssel überall) bleibt bewusst
+  außerhalb des jeweiligen Blocks, siehe BACKLOG.md.
+- Visuelle Browser-Kontrolle des Jira-Forge-Panels konnte in keiner Session bisher
+  durch Claude selbst durchgeführt werden (kein angemeldeter Atlassian-Browser
+  verfügbar) — die vom Panel konsumierten Daten sind jedoch vollständig über die
+  Coverage-API live bestätigt; der Nutzer wurde jeweils um einen kurzen eigenen
+  Blick gebeten.
 
 ## Premium UI, Branding & Visual Design (21.08.2026)
 
@@ -614,11 +771,12 @@ Docker-Compose-Stack.
 
 ## Nächster sinnvoller Schritt
 
-BACKLOG.md → Next: **Jira Forge App / Issue Panel** ist der empfohlene nächste
-fachliche Block — die REST-API liefert bereits alles Nötige (Requirement-Links,
-Execution-Status/-Progress), der CI-Kreislauf ist jetzt mit JSON- **und**
-JUnit-XML-Publish sowie Authentifizierung produktionsnah geschlossen. Weitere
-Report-Importer (Playwright, Cypress, Allure, NUnit, pytest) bleiben spätere,
-kleinere Erweiterungen derselben `ResultBatchReader`-Schnittstelle. Human User
-Authentication bleibt der nächste *Security*-Block, sobald ein konkreter Bedarf
-für Personen- statt Maschinen-Identität entsteht.
+BACKLOG.md → Next: **Human User Authentication** (Login, Sessions) ist der
+empfohlene nächste Block. Mit dem Jira Forge Panel existiert jetzt ein echter,
+produktiver externer Consumer der API; das Frontend selbst läuft weiterhin auf der
+bewusst als Übergangslösung gekennzeichneten Dev-Token-Eingabe (ADR 0012). Step-Level
+Execution Results und der Completed/Aborted-Guard schließen die zuvor offenen
+fachlichen Lücken der Execution-Domain — die nächste sinnvolle Investition ist jetzt
+eine echte Personen-Identität für das Frontend, nicht ein weiterer Report-Importer
+oder eine weitere Forge-Panel-Erweiterung (beide bleiben kleinere, unabhängige
+Next-Punkte in BACKLOG.md).
