@@ -53,3 +53,26 @@ Testschritte besitzen zusätzlich ein optionales, versioniertes `inputData`-Feld
 zwischen Action und Expected Result. Es ist Teil derselben immutable
 `TestCaseVersion`; alte Clients dürfen es weglassen und bestehende Schritte werden
 durch die additive Migration mit `null` weitergeführt.
+
+## Erweiterung: Vorhandenen Testfall aus dem Jira-Kontext verknüpfen
+
+Neben dem Anlegen eines neuen Testfalls kann das Panel einen **bereits
+existierenden** Testryn-Testfall mit dem aktuellen Issue verknüpfen: Projekt
+wählen, Testfälle nach Human-ID/Titel durchsuchen (der bestehende paginierte
+`GET /api/v1/projects/{key}/test-cases`-Such-Endpoint, unverändert
+wiederverwendet, auf eine Seite je Forge-Request begrenzt), einen Treffer
+verknüpfen.
+
+Bewusst **keine neue API**: der Schreibpfad ist der bestehende, provider-neutrale
+`POST /api/v1/test-cases/{testCaseId}/requirements` (Duplikatschutz über `409`,
+Best-Effort-Enrichment über den `RequirementProvider`). Er passt fachlich exakt --
+ein zusätzlicher `/requirement-links`-Sibling wäre reine Dopplung gewesen.
+
+Dasselbe Vertrauensmodell wie beim Erstellen: der Browser liefert ausschließlich
+die Testfall-ID. `externalKey` stammt aus dem Forge Invocation Context, die
+`url` (`<jira-base>/browse/<KEY>`) wird aus Testryns persistierten
+Integrationseinstellungen gebaut (`GET /api/v1/integrations/jira/connection`), nie
+aus einem Browser-Wert. Der Forge-Service-Token nutzt seinen schon vorhandenen
+`testryn:write`-Scope; keine Scope-Änderung, keine Jira-REST-Scopes. Bereits
+verknüpfte Testfälle zeigt das Panel als „Linked" und bietet sie nicht erneut an --
+die eigentliche Durchsetzung bleibt der `409` aus Testryn.

@@ -1,5 +1,13 @@
 import { fetch } from "@forge/api";
-import { createLinkedTestCase, createProject, getCoverage, getProjects, updateTestCaseDefinition } from "../src/resolvers/testrynClient";
+import {
+  createLinkedTestCase,
+  createProject,
+  getCoverage,
+  getProjects,
+  linkExistingTestCase,
+  searchTestCases,
+  updateTestCaseDefinition,
+} from "../src/resolvers/testrynClient";
 
 jest.mock("@forge/api", () => ({
   fetch: jest.fn(),
@@ -206,5 +214,89 @@ describe("testrynClient.getCoverage", () => {
     expect(body.externalKey).toBe("EVAL-48");
     expect(body.url).toBe("https://customer.atlassian.net/browse/EVAL-48");
     expect(body.provider).toBe("JIRA");
+  });
+
+  test("searchTestCases queries one page of the project search and returns the real total", async () => {
+    fetch.mockResolvedValueOnce(jsonResponse(200, {
+      content: [{ id: "tc-1", humanId: "EVAL-TC-1", title: "Login" }],
+      page: 0, size: 20, totalElements: 42, totalPages: 3,
+    }));
+
+    const result = await searchTestCases("EVAL", "login");
+
+    expect(result).toEqual({ kind: "ok", testCases: [{ id: "tc-1", humanId: "EVAL-TC-1", title: "Login" }], totalCount: 42 });
+    const [url, options] = fetch.mock.calls[0];
+    expect(url).toBe("https://testryn.example.com/api/v1/projects/EVAL/test-cases?size=20&query=login");
+    expect(options.method).toBe("GET");
+  });
+
+  test("searchTestCases omits the query parameter when no search text is given", async () => {
+    fetch.mockResolvedValueOnce(jsonResponse(200, { content: [], page: 0, size: 20, totalElements: 0, totalPages: 0 }));
+
+    const result = await searchTestCases("EVAL", "   ");
+
+    expect(result).toEqual({ kind: "ok", testCases: [], totalCount: 0 });
+    expect(fetch.mock.calls[0][0]).toBe("https://testryn.example.com/api/v1/projects/EVAL/test-cases?size=20");
+  });
+
+  test("searchTestCases rejects a missing project key without calling fetch", async () => {
+    expect(await searchTestCases("", "login")).toEqual({ kind: "invalid" });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test("searchTestCases surfaces a non-page response shape as 'unavailable'", async () => {
+    fetch.mockResolvedValueOnce(jsonResponse(200, [{ id: "tc-1" }]));
+    expect(await searchTestCases("EVAL", "x")).toEqual({ kind: "unavailable" });
+  });
+
+  test("linkExistingTestCase links via the trusted issue key and configured Jira URL", async () => {
+    fetch.mockResolvedValueOnce(jsonResponse(200, { baseUrl: "https://customer.atlassian.net/" }));
+    fetch.mockResolvedValueOnce(jsonResponse(201, { id: "link-1" }));
+
+    expect(await linkExistingTestCase("EVAL-48", "tc-1")).toEqual({ kind: "ok" });
+
+    expect(fetch.mock.calls[0][0]).toBe("https://testryn.example.com/api/v1/integrations/jira/connection");
+    const [url, options] = fetch.mock.calls[1];
+    expect(url).toBe("https://testryn.example.com/api/v1/test-cases/tc-1/requirements");
+    expect(options.method).toBe("POST");
+    const body = JSON.parse(options.body);
+    expect(body).toEqual({ provider: "JIRA", externalKey: "EVAL-48", url: "https://customer.atlassian.net/browse/EVAL-48" });
+  });
+
+  test("linkExistingTestCase maps a duplicate (409) to 'conflict', not an error", async () => {
+    fetch.mockResolvedValueOnce(jsonResponse(200, { baseUrl: "https://customer.atlassian.net" }));
+    fetch.mockResolvedValueOnce(jsonResponse(409, { code: "CONFLICT" }));
+
+    expect(await linkExistingTestCase("EVAL-48", "tc-1")).toEqual({ kind: "conflict" });
+  });
+
+  test("linkExistingTestCase maps 401/403 to 'unauthorized'", async () => {
+    fetch.mockResolvedValueOnce(jsonResponse(200, { baseUrl: "https://customer.atlassian.net" }));
+    fetch.mockResolvedValueOnce(jsonResponse(403, { code: "FORBIDDEN" }));
+
+    expect(await linkExistingTestCase("EVAL-48", "tc-1")).toEqual({ kind: "unauthorized" });
+  });
+
+  test("linkExistingTestCase surfaces a network failure as 'unavailable'", async () => {
+    fetch.mockResolvedValueOnce(jsonResponse(200, { baseUrl: "https://customer.atlassian.net" }));
+    fetch.mockRejectedValueOnce(new Error("ECONNRESET"));
+
+    expect(await linkExistingTestCase("EVAL-48", "tc-1")).toEqual({ kind: "unavailable" });
+  });
+
+  test("linkExistingTestCase rejects a missing test case id without calling fetch", async () => {
+    expect(await linkExistingTestCase("EVAL-48", "")).toEqual({ kind: "invalid" });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test("linkExistingTestCase never leaks the token, on success or failure", async () => {
+    const token = "testryn_secret_token_value_that_must_never_leak";
+    fetch.mockResolvedValueOnce(jsonResponse(200, { baseUrl: "https://customer.atlassian.net" }));
+    fetch.mockResolvedValueOnce(jsonResponse(201, {}));
+    expect(JSON.stringify(await linkExistingTestCase("EVAL-48", "tc-1"))).not.toContain(token);
+
+    fetch.mockResolvedValueOnce(jsonResponse(200, { baseUrl: "https://customer.atlassian.net" }));
+    fetch.mockRejectedValueOnce(new Error(`boom with ${token}`));
+    expect(JSON.stringify(await linkExistingTestCase("EVAL-48", "tc-1"))).not.toContain(token);
   });
 });

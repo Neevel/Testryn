@@ -3,6 +3,21 @@
 Strukturierter Produktbacklog. `Now` = aktueller Meilenstein, `Next` = danach
 sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 
+## Now (Vorhandenen Testfall aus dem Jira-Panel verknüpfen — Task 1, siehe PROJECT_STATUS.md)
+
+- [x] Forge-Resolver `searchTestCases` (paginierter `GET /projects/{key}/test-cases`,
+      eine Seite je Request) und `linkExistingTestCase`
+- [x] Schreibpfad = bestehender `POST /api/v1/test-cases/{id}/requirements`
+      (provider-neutral, `409`-Duplikatschutz) — kein neuer Backend-Endpoint
+- [x] `externalKey` aus dem Forge Invocation Context, `url` aus
+      `GET /api/v1/integrations/jira/connection` — Browser liefert nur die
+      Testfall-ID; Service-Token bleibt im Resolver (`testryn:write` genügt)
+- [x] `TestCaseLinker.jsx` in Empty- und Ok-State; bereits verknüpfte Treffer als
+      „Linked", `markLinkable` als reine, getestete Datenhilfe
+- [x] ADR 0016 Erweiterungsabschnitt, `docs/jira-forge-integration.md` aktualisiert
+- [x] Forge 64/64 Jest grün, `forge lint` ohne Befund
+- [ ] `forge deploy`/`install` und visuelle Browser-Abnahme (zusammen mit Task 3)
+
 ## Now (JUnit XML Import & CI Adapter, siehe PROJECT_STATUS.md)
 
 - [x] `JUnitXmlResultBatchReader` — Surefire/Failsafe-XML (`<testsuite>`/
@@ -104,9 +119,10 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
   die Step-Result-API ist dafür vorbereitet (dieselbe `PATCH .../step-results`, die
   auch der Runner nutzt), aber kein Adapter dafür in diesem Block gebaut
   (Abschnitt 21/54).
-- **Weitere Forge-Panel-Schreibaktionen** (Link Existing, Start Execution) — das
-  Erstellen und automatische Verknüpfen neuer Testfälle sowie das versionssichere
-  Bearbeiten sind umgesetzt (ADR 0016); die übrigen Aktionen bleiben eigenständige Blöcke. Kein
+- **Weitere Forge-Panel-Schreibaktionen** (Start Execution) — das Erstellen und
+  automatische Verknüpfen neuer Testfälle, das versionssichere Bearbeiten (ADR 0016)
+  und das Verknüpfen bereits vorhandener Testfälle (Task 1) sind umgesetzt; „Start
+  Execution aus dem Panel" ist der nächste eigenständige Block (Task 2). Kein
   AI-„Generate Tests"-Button — separater, noch nicht begonnener Block.
 - **Weitere Report-Importer** (Playwright, Cypress, Allure, NUnit, pytest) — dieselbe
   `ResultBatchReader`-Schnittstelle wie beim jetzt implementierten JUnit-XML-Adapter,

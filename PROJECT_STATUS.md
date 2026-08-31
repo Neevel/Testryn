@@ -7,6 +7,31 @@ Stand: 2026-08-31
 
 ## Aktueller Meilenstein
 
+**Vorhandenen Testfall aus dem Jira-Panel verknüpfen: implementiert (Forge-only,
+Task 1).** Neben „Create test case" bietet das Panel jetzt „Link existing test
+case": Projekt wählen, Testfälle des Projekts nach Human-ID/Titel durchsuchen
+(bestehender paginierter `GET /api/v1/projects/{key}/test-cases`-Such-Endpoint,
+eine Seite je Forge-Request, Abschnitt 22), einen Treffer per Klick mit dem
+aktuellen Issue verknüpfen. Kein neuer Backend-Endpoint: der Schreibpfad ist der
+bestehende provider-neutrale `POST /api/v1/test-cases/{id}/requirements`
+(Duplikatschutz `409`, Best-Effort-Enrichment). Vertrauensmodell wie beim
+Erstellen (ADR 0016): der Browser liefert nur die Testfall-ID, `externalKey` kommt
+aus dem Forge Invocation Context, die `url` aus Testryns persistierter
+Jira-Connection (`GET /api/v1/integrations/jira/connection`) — der Service-Token
+bleibt im Resolver, sein vorhandener `testryn:write`-Scope reicht, keine
+Jira-REST-Scopes. Bereits verknüpfte Treffer zeigt das Panel als „Linked" und
+bietet sie nicht erneut an; die Durchsetzung bleibt der `409`. Neuer Resolver
+`searchTestCases`/`linkExistingTestCase`, neue Komponente `TestCaseLinker.jsx`,
+reine Datenhilfe `markLinkable` in `coverageView.js`. ADR 0016 um einen
+Erweiterungsabschnitt ergänzt, `docs/jira-forge-integration.md` aktualisiert.
+Verifikation: **Forge 64/64 Jest grün** (46 vorher + 18 neu), `forge lint` ohne
+Befund. Frontend `npm run build` + 7/7 grün und `tools`-Suite nicht betroffen
+(keine Änderung dort). Voller Backend-Lauf 162/163 — der eine Fehlschlag ist die
+seit Langem dokumentierte `System.nanoTime() % 100000`-Test-Key-Kollision in
+`BulkResultUpdateTest` (isoliert 16/16 grün, kein Backend-Code in diesem Task
+angefasst). `forge deploy`/`install` und die visuelle Browser-Abnahme stehen noch
+aus (Task 3).
+
 **Reproduzierbarer lokaler Rechnerumzug: umgesetzt.** `scripts/backup-local.ps1`
 exportiert die PostgreSQL-Datenbank und das Report-Volume zusammen mit
 SHA-256-Prüfsummen in einen von Git ausgeschlossenen Backup-Ordner.

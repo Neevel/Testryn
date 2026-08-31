@@ -2,6 +2,7 @@ import {
   executorLabel,
   getFailedOrBlockedSteps,
   isAttentionStatus,
+  markLinkable,
   orderByAttention,
   rankOf,
   summarizeCoverage,
@@ -177,6 +178,31 @@ describe("orderByAttention / rankOf", () => {
     const passedRank = rankOf(testCase("x", { status: "PASSED" }));
     expect(notRunRank).toBeLessThan(noExecutionRank);
     expect(noExecutionRank).toBeLessThan(passedRank);
+  });
+});
+
+describe("markLinkable", () => {
+  const hits = [{ id: "tc-1", humanId: "EVAL-TC-1" }, { id: "tc-2", humanId: "EVAL-TC-2" }, { id: "tc-3", humanId: "EVAL-TC-3" }];
+
+  test("flags search hits that already cover this issue", () => {
+    const marked = markLinkable(hits, ["tc-2"]);
+    expect(marked.map((tc) => tc.alreadyLinked)).toEqual([false, true, false]);
+  });
+
+  test("nothing linked yet leaves every hit linkable", () => {
+    expect(markLinkable(hits, []).every((tc) => tc.alreadyLinked === false)).toBe(true);
+    expect(markLinkable(hits, undefined).every((tc) => tc.alreadyLinked === false)).toBe(true);
+  });
+
+  test("null/empty search results do not throw", () => {
+    expect(markLinkable(null, ["tc-1"])).toEqual([]);
+    expect(markLinkable([], ["tc-1"])).toEqual([]);
+  });
+
+  test("does not mutate the input rows", () => {
+    const original = [{ id: "tc-1" }];
+    markLinkable(original, ["tc-1"]);
+    expect(original[0]).toEqual({ id: "tc-1" });
   });
 });
 

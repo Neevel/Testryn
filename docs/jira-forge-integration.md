@@ -270,12 +270,32 @@ does not repeat it). States:
   this automation source") instead of an empty step area. "Open in Testryn" and
   "Open execution" are grouped together at the card's footer, never interspersed
   with step content.
-- **Empty** (no linked test cases): "No Testryn test cases linked" with a link to
-  Testryn -- no create-from-Jira action in this MVP (Abschnitt 17).
+- **Empty** (no linked test cases): "No Testryn test cases linked" with a
+  "Create test case" action and a "Link existing test case" action (see below);
+  the original read-only MVP had neither (ADR 0016 and its extension).
 - **Error** (Testryn unreachable): "Testryn is currently unavailable. Existing Jira
   data is unaffected." -- no stack trace, no technical detail (Abschnitt 18).
 - **Unauthorized** (bad/missing/revoked token): "Testryn connection is not
   authorized." -- no detail about the secret itself (Abschnitt 19).
+
+## Link an existing test case
+
+Next to "Create test case", the panel offers "Link existing test case": pick a
+Testryn project, search its test cases by human ID or title (the paginated
+`GET /api/v1/projects/{key}/test-cases` search, reused as-is and capped at one
+page per Forge request, Abschnitt 22), and link one to the current issue with a
+single click. Test cases already covering this issue are shown as `Linked` and are
+not offered again -- Testryn still rejects a genuine duplicate with `409`, which
+the panel surfaces as "already linked", not an error.
+
+The write itself reuses the existing provider-neutral
+`POST /api/v1/test-cases/{id}/requirements` endpoint -- no new API. As with
+create-from-Jira (ADR 0016), the browser only ever supplies the test case id; the
+`externalKey` comes from the trusted Forge invocation context and the human-facing
+`url` (`<jira-base>/browse/<KEY>`) is built from Testryn's own persisted Jira
+connection settings (`GET /api/v1/integrations/jira/connection`), never from a
+value the browser could tamper with. Needs the Forge service token's existing
+`testryn:write` scope (ADR 0016); no scope change, no Jira scope.
 
 ## Security
 

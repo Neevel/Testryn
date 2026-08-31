@@ -86,6 +86,19 @@ export function summarizeCoverage(testCases) {
   return counts;
 }
 
+/** For the "link existing test case" picker: flags each search hit that is already
+ * part of this issue's coverage so the panel can show it as linked instead of
+ * offering it again. The backend still rejects a genuine duplicate with 409 -- this
+ * is only the friendlier pre-check, never the enforcement. Pure, so it stays
+ * testable even though the picker itself is UI Kit. */
+export function markLinkable(searchResults, linkedIds) {
+  const linked = new Set(linkedIds ?? []);
+  return (searchResults ?? []).map((testCase) => ({
+    ...testCase,
+    alreadyLinked: linked.has(testCase.id),
+  }));
+}
+
 export function formatDate(isoString) {
   if (!isoString) {
     return "not yet run";
