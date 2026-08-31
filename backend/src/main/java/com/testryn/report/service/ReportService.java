@@ -82,4 +82,17 @@ public class ReportService {
         Report report = getById(reportId);
         return reportStorage.load(report.getStorageKey());
     }
+
+    public void deleteForExecution(UUID executionId) {
+        deleteReports(reportRepository.findByExecutionId(executionId));
+    }
+
+    public void deleteForProject(UUID projectId) {
+        deleteReports(reportRepository.findByExecutionProjectId(projectId));
+    }
+
+    private void deleteReports(List<Report> reports) {
+        reports.forEach(report -> reportStorage.delete(report.getStorageKey()));
+        reportRepository.deleteAll(reports);
+    }
 }

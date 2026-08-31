@@ -70,6 +70,99 @@ export async function getCoverage(issueKey) {
   };
 }
 
+export async function updateTestCaseDefinition(issueKey, testCaseId, definition) {
+  const coverage = await getCoverage(issueKey);
+  if (coverage.kind !== "ok") return coverage;
+  const linked = coverage.testCases.find((testCase) => testCase.id === testCaseId);
+  if (!linked) return { kind: "invalid" };
+  if (!validDefinition(definition) || definition.expectedVersion !== linked.version) {
+    return { kind: "invalid" };
+  }
+
+  const baseUrl = trimTrailingSlash(process.env.TESTRYN_API_BASE_URL);
+  const token = process.env.TESTRYN_API_TOKEN;
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/test-cases/${encodeURIComponent(testCaseId)}/definition`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(definition),
+    });
+    if (response.status === 401 || response.status === 403) return { kind: "unauthorized" };
+    if (response.status === 409) return { kind: "conflict" };
+    if (response.status === 400) return { kind: "invalid" };
+    if (!response.ok) return { kind: "unavailable" };
+    return { kind: "ok" };
+  } catch (networkError) {
+    return { kind: "unavailable" };
+  }
+}
+
+export async function getProjects() {
+  return sendJson("/api/v1/projects", { method: "GET" }, (body) =>
+    Array.isArray(body) ? { kind: "ok", projects: body } : { kind: "unavailable" });
+}
+
+export async function createProject(project) {
+  if (!project || typeof project.key !== "string" || typeof project.name !== "string") return { kind: "invalid" };
+  return sendJson("/api/v1/projects", { method: "POST", body: project }, (body) => ({ kind: "ok", project: body }));
+}
+
+export async function createLinkedTestCase(issueKey, input) {
+  if (!input || typeof input.projectKey !== "string") return { kind: "invalid" };
+  // The Jira URL belongs to Testryn's persisted integration settings. Reading it
+  // here avoids baking one customer's site into the Forge deployment.
+  const connection = await sendJson("/api/v1/integrations/jira/connection", { method: "GET" },
+    (body) => typeof body?.baseUrl === "string"
+      ? { kind: "ok", baseUrl: trimTrailingSlash(body.baseUrl) }
+      : { kind: "unavailable" });
+  if (connection.kind !== "ok" || !connection.baseUrl) return connection;
+  const body = {
+    ...input,
+    provider: "JIRA",
+    externalKey: issueKey,
+    url: `${connection.baseUrl}/browse/${encodeURIComponent(issueKey)}`,
+  };
+  return sendJson("/api/v1/requirement-links/test-cases", { method: "POST", body },
+    (created) => ({ kind: "ok", testCase: created }));
+}
+
+async function sendJson(path, request, onSuccess) {
+  const baseUrl = trimTrailingSlash(process.env.TESTRYN_API_BASE_URL);
+  if (!baseUrl) return { kind: "unavailable" };
+  const token = process.env.TESTRYN_API_TOKEN;
+  try {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method: request.method,
+      headers: {
+        ...(request.body ? { "Content-Type": "application/json" } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      ...(request.body ? { body: JSON.stringify(request.body) } : {}),
+    });
+    if (response.status === 401 || response.status === 403) return { kind: "unauthorized" };
+    if (response.status === 400 || response.status === 409) return { kind: "invalid" };
+    if (!response.ok) return { kind: "unavailable" };
+    const body = await response.json();
+    return onSuccess(body);
+  } catch (ignored) {
+    return { kind: "unavailable" };
+  }
+}
+
+function validDefinition(value) {
+  return value && Number.isInteger(value.expectedVersion) && value.expectedVersion > 0
+    && typeof value.title === "string" && value.title.trim().length > 0
+    && (value.description == null || typeof value.description === "string")
+    && (value.preconditions == null || typeof value.preconditions === "string")
+    && Array.isArray(value.steps) && value.steps.length > 0
+    && value.steps.every((step) => typeof step.action === "string" && step.action.trim().length > 0
+      && (step.inputData == null || typeof step.inputData === "string")
+      && typeof step.expectedResult === "string" && step.expectedResult.trim().length > 0);
+}
+
 function trimTrailingSlash(value) {
   if (!value) {
     return "";

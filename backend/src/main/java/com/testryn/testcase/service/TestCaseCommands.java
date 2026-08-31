@@ -11,7 +11,10 @@ public final class TestCaseCommands {
     private TestCaseCommands() {
     }
 
-    public record StepCommand(String action, String expectedResult) {
+    public record StepCommand(String action, String inputData, String expectedResult) {
+        public StepCommand(String action, String expectedResult) {
+            this(action, null, expectedResult);
+        }
     }
 
     public record CreateTestCaseCommand(
@@ -41,6 +44,17 @@ public final class TestCaseCommands {
             TestCasePriority priority,
             Set<String> tags,
             String automationReference
+    ) {
+    }
+
+    /** Narrow content-only edit used by embedded clients. The expected version
+     * prevents a stale editor from silently replacing somebody else's changes. */
+    public record UpdateTestCaseDefinitionCommand(
+            int expectedVersion,
+            String title,
+            String description,
+            String preconditions,
+            List<StepCommand> steps
     ) {
     }
 }

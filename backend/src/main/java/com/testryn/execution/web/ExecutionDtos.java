@@ -215,6 +215,7 @@ public final class ExecutionDtos {
     public record ExecutionStepResponse(
             int order,
             String action,
+            String inputData,
             String expectedResult,
             StepResultResponse result
     ) {
@@ -252,7 +253,7 @@ public final class ExecutionDtos {
         }
 
         private static ExecutionStepResponse toStepResponse(TestStep step, ExecutionStepResult stepResult) {
-            return new ExecutionStepResponse(step.getStepOrder(), step.getAction(), step.getExpectedResult(),
+            return new ExecutionStepResponse(step.getStepOrder(), step.getAction(), step.getInputData(), step.getExpectedResult(),
                     stepResult == null ? null : StepResultResponse.from(stepResult));
         }
     }

@@ -2,8 +2,9 @@ package com.testryn.integration.jira.web;
 
 import com.testryn.integration.jira.JiraAuthType;
 import com.testryn.integration.jira.JiraIssueClient.JiraConnectionTestResult;
-import com.testryn.integration.jira.JiraProperties;
+import com.testryn.integration.jira.service.JiraConnectionSettings;
 import com.testryn.requirement.provider.ExternalRequirementInfo;
+import jakarta.validation.constraints.NotBlank;
 
 public final class JiraIntegrationDtos {
 
@@ -20,20 +21,31 @@ public final class JiraIntegrationDtos {
             JiraAuthType authType,
             String email,
             boolean active,
+            boolean siteConfigured,
             boolean tokenConfigured,
             boolean usable
     ) {
-        public static JiraConnectionResponse from(JiraProperties properties) {
+        public static JiraConnectionResponse from(JiraConnectionSettings settings) {
             return new JiraConnectionResponse(
-                    properties.getName(),
-                    properties.getBaseUrl(),
-                    properties.getAuthType(),
-                    properties.getEmail(),
-                    properties.isActive(),
-                    properties.isTokenConfigured(),
-                    properties.isUsable()
+                    settings.name(),
+                    settings.baseUrl(),
+                    settings.authType(),
+                    settings.email(),
+                    settings.active(),
+                    settings.siteConfigured(),
+                    settings.tokenConfigured(),
+                    settings.usable()
             );
         }
+    }
+
+    /** Non-secret settings only. API tokens remain external server configuration. */
+    public record UpdateJiraConnectionRequest(
+            @NotBlank String name,
+            @NotBlank String baseUrl,
+            String email,
+            boolean active
+    ) {
     }
 
     public record JiraConnectionTestResponse(boolean success, String message) {

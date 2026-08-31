@@ -104,11 +104,10 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
   die Step-Result-API ist dafür vorbereitet (dieselbe `PATCH .../step-results`, die
   auch der Runner nutzt), aber kein Adapter dafür in diesem Block gebaut
   (Abschnitt 21/54).
-- **Forge-Panel-Schreibaktionen** (Create Test Case, Link Existing, Start
-  Execution) — Architektur bewusst nicht verbaut (eigener `testryn:write`-Token,
-  kein stiller Scope-Ausbau des bestehenden Read-Tokens), aber explizit nicht in
-  diesem Block gebaut (Abschnitt 31/47). Kein AI-„Generate Tests"-Button (Abschnitt
-  32/47) — separater, noch nicht begonnener Block.
+- **Weitere Forge-Panel-Schreibaktionen** (Link Existing, Start Execution) — das
+  Erstellen und automatische Verknüpfen neuer Testfälle sowie das versionssichere
+  Bearbeiten sind umgesetzt (ADR 0016); die übrigen Aktionen bleiben eigenständige Blöcke. Kein
+  AI-„Generate Tests"-Button — separater, noch nicht begonnener Block.
 - **Weitere Report-Importer** (Playwright, Cypress, Allure, NUnit, pytest) — dieselbe
   `ResultBatchReader`-Schnittstelle wie beim jetzt implementierten JUnit-XML-Adapter,
   jeweils ein kleinerer, eigenständiger Block.
@@ -123,6 +122,8 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
   nach Umstellung widerrufen" als geführter Workflow statt zweier manueller
   Schritte) — aktuell manuell über Create + Revoke möglich, kein eigener Workflow.
 - **Jira OAuth 2.0** — `JiraAuthType.OAUTH2` existiert bereits als Enum-Wert.
+- **Jira Server/Data Center** — die neue Laufzeitkonfiguration akzeptiert aus
+  Sicherheitsgründen zunächst ausschließlich Jira Cloud (`*.atlassian.net`).
 - **RBAC über die drei Service-Token-Scopes hinaus** — bewusst nicht in diesem Block
   (Abschnitt 36); erst bei konkretem Bedarf (z. B. projektspezifische Tokens).
 - **Result-Audit-History** — Statusübergangs-Historie (voriger/neuer Status,

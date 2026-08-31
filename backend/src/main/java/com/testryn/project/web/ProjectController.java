@@ -1,6 +1,7 @@
 package com.testryn.project.web;
 
 import com.testryn.project.domain.Project;
+import com.testryn.common.service.DeletionService;
 import com.testryn.project.service.ProjectService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -16,9 +17,11 @@ import static com.testryn.project.web.ProjectDtos.*;
 public class ProjectController {
 
     private final ProjectService projectService;
+    private final DeletionService deletionService;
 
-    public ProjectController(ProjectService projectService) {
+    public ProjectController(ProjectService projectService, DeletionService deletionService) {
         this.projectService = projectService;
+        this.deletionService = deletionService;
     }
 
     @PostMapping
@@ -42,4 +45,7 @@ public class ProjectController {
     public ProjectResponse update(@PathVariable String projectKey, @Valid @RequestBody UpdateProjectRequest request) {
         return ProjectResponse.from(projectService.update(projectKey, request.name(), request.description()));
     }
+    @DeleteMapping("/{projectKey}")
+    @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable String projectKey) { deletionService.deleteProject(projectKey); }
 }

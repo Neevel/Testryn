@@ -6,6 +6,7 @@ function step(status: ExecutionResultStatus | null, order = 1): ExecutionStep {
   return {
     order,
     action: "Do it",
+    inputData: null,
     expectedResult: "Works",
     result:
       status === null

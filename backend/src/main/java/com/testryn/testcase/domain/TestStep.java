@@ -27,6 +27,9 @@ public class TestStep {
     @Column(name = "action", nullable = false, columnDefinition = "TEXT")
     private String action;
 
+    @Column(name = "input_data", columnDefinition = "TEXT")
+    private String inputData;
+
     @Column(name = "expected_result", nullable = false, columnDefinition = "TEXT")
     private String expectedResult;
 
@@ -35,8 +38,13 @@ public class TestStep {
     }
 
     public TestStep(int stepOrder, String action, String expectedResult) {
+        this(stepOrder, action, null, expectedResult);
+    }
+
+    public TestStep(int stepOrder, String action, String inputData, String expectedResult) {
         this.stepOrder = stepOrder;
         this.action = action;
+        this.inputData = inputData;
         this.expectedResult = expectedResult;
     }
 
@@ -62,5 +70,9 @@ public class TestStep {
 
     public String getExpectedResult() {
         return expectedResult;
+    }
+
+    public String getInputData() {
+        return inputData;
     }
 }

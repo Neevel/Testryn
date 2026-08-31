@@ -3,9 +3,19 @@
 > Momentaufnahme des aktuellen technischen Stands. Keine Historie — siehe Git-Log für
 > Verlauf. Wird bei jedem abgeschlossenen, relevanten Task aktualisiert.
 
-Stand: 2026-08-24
+Stand: 2026-08-31
 
 ## Aktueller Meilenstein
+
+**Reproduzierbarer lokaler Rechnerumzug: umgesetzt.** `scripts/backup-local.ps1`
+exportiert die PostgreSQL-Datenbank und das Report-Volume zusammen mit
+SHA-256-Prüfsummen in einen von Git ausgeschlossenen Backup-Ordner.
+`scripts/restore-local.ps1` validiert dieses Paket und ersetzt nur mit explizitem
+`-Force` die lokale Datenbank und Report-Dateien. Der vollständige Ablauf für
+Repository-Clone, Jira-Secrets, Cloudflare-Quick-Tunnel sowie Forge-Deployment und
+Installations-Upgrade ist im README dokumentiert. Ein echtes Backup des laufenden
+Stacks wurde erfolgreich erzeugt; der destruktive Restore wurde bewusst nicht gegen
+den aktiven Datenbestand ausgeführt.
 
 **Forge Accordion Test Details UX: implementiert und nach Development deployed.**
 Alle verlinkten Test Cases starten geschlossen und lassen sich unabhängig voneinander
@@ -783,6 +793,229 @@ Docker-Compose-Stack.
   vollständig erreichbar.
 - Verifikation: `frontend/npm run build` erfolgreich; `frontend/npm test` 5/5 grün;
   `backend/mvn test` 107/107 grün.
+
+## Frontend: testmanagement-zentrierte Navigation und Kataloge (24.08.2026)
+
+- `Project` bleibt die fachliche Klammer für Testbibliothek, Pläne, Requirements und
+  Executions; `TestPlan` wird nicht fälschlich mit dem Projekt gleichgesetzt.
+- Projekte, Test Cases und Test Plans sind nun als eigenständige Hauptbereiche in der
+  Navigation erreichbar, statt ausschließlich in Projekt-Tabs verborgen zu sein.
+- Projektübergreifender Test-Case-Katalog mit Suche nach ID/Titel/Tag sowie Filtern nach
+  Projekt, Status und Priorität ergänzt; Testplan-Katalog mit Suche und Projektfilter.
+- Testplan-Detail zum operativen Plan-Builder ausgebaut: Test Cases werden direkt nach
+  ID, Titel oder Tag gesucht und einzeln in den Plan übernommen. Fehlende Test Cases
+  lassen sich aus diesem Kontext mit bereits geöffnetem Anlageformular erstellen.
+- Neue Katalogansichten und Plan-Builder sind responsiv im bestehenden Designsystem
+  umgesetzt; keine neuen Abhängigkeiten und keine Änderungen am Domain-/API-Modell.
+- Verifikation: `frontend/npm run build` erfolgreich; `frontend/npm test` 7/7 grün.
+
+## Theme-Umschaltung und sichere Lösch-Workflows (24.08.2026)
+
+- Persistenter Frontend-Schalter für `System`, `Light` und `Dark` in der Navigation.
+- Einzelnes Löschen von Test Cases, Test Plans und Executions über REST API und UI;
+  destructive Aktionen verlangen die Eingabe einer ID, eines Namens oder `DELETE`.
+- Einzelnes Test-Case-Löschen erhält historische Execution-/Versions-Snapshots und
+  entfernt aktive Plan-/Requirement-Zuordnungen. Testplan-Löschen erhält Executions.
+- Projekt-Löschen entfernt nach Eingabe des Projektschlüssels alle fachlichen Daten,
+  Execution-Historien, Report-Metadaten und gespeicherten Reportdateien des Projekts.
+- Kein globaler Instanz-Reset ergänzt; dieser bleibt eine separate Admin-Funktion.
+- Verifikation: Backend `mvn test` 156/156 grün (inkl. Liquibase-Migration), Frontend
+  Production-Build erfolgreich und `npm test` 7/7 grün.
+
+## UX-Audit gegen Xray/Testiny und Dashboard-Schnellzugriffe (24.08.2026)
+
+- Projekt-Overview um operative Testplan-Karten mit Testanzahl, Run-Anzahl, letzter
+  Ausführung und Ergebniszusammenfassung erweitert.
+- Dashboard-KPIs sind echte Schnellzugriffe: Projects, aktive Test Cases, laufende
+  Executions sowie Executions mit Passed-/Failed-/Blocked-Ergebnissen öffnen jeweils
+  eine bereits gefilterte Liste.
+- Globale Execution-Liste um kombinierbare Schnellfilter für Status und Ergebnisse
+  ergänzt; aktive Filter und Trefferzahl bleiben sichtbar.
+- Projektkarten auf zwei letzte Executions begrenzt und mit Grid, Ellipsis und
+  in-flow Footer gegen Text-/Badge-Überlappungen abgesichert.
+- Expliziter Light Mode überschreibt nun auch alle zuvor system-dark geerbten
+  Tabellen-, Karten-, Formular-, Empty-State- und Hover-Flächen vollständig.
+- Offizielle Xray-/Testiny-Muster geprüft: planzentrierter Workflow, schnelle Filter
+  und Planfortschritt übernommen. Test Repository/Folders, dynamische Pläne und Test
+  Environments bewusst nicht als reine UI-Fassade ergänzt, da dafür Domain-/API-
+  Entscheidungen nötig sind.
+- Jira-Forge-Panel geprüft und bewusst unverändert gelassen: es folgt bereits dem
+  nativen Atlassian Theme und zeigt Status, Version, Execution und Step-Ergebnisse
+  platzsparend im Issue-Kontext.
+- Verifikation: Frontend Production-Build erfolgreich; `npm test` 7/7 grün.
+
+## Wide-Screen-Dashboard und kompaktes Jira-Panel (24.08.2026)
+
+- App-Inhalt auf großen Monitoren innerhalb der Fläche rechts der Sidebar zentriert;
+  responsives Wachstum bis 1920 px statt linksbündiger 1500-px-Insel.
+- Dashboard priorisiert nun aktive Testpläne vor Fehlern/Projekten und zeigt je Plan
+  Testanzahl, Runs, letzte Execution und Passed-/Failed-Zusammenfassung.
+- Projektbereich auf acht Karten begrenzt, mit Suche sowie Filtern `All`, `Needs
+  attention` und `Running`; vollständige Projektliste bleibt direkt erreichbar.
+- KPI-Raster um `Test plans` ergänzt und für sieben Schnellzugriffe responsiv als
+  Auto-Fit-Grid umgesetzt.
+- Jira-Panel um Statusfilter und Trefferzahl ergänzt; FAILED/BLOCKED Tests sind
+  initial geöffnet. Leere `Input / Data`-Spalte entfernt, normale Schrittzeilen
+  dadurch breiter und kompakter.
+- Jira-Fehlerdetails aus der engen Result-Zelle in vollbreite Attention-Panels unter
+  der Schritttabelle verlagert; Actual Result bleibt sofort sichtbar, lange Details
+  bleiben explizit aufklappbar.
+- Verifikation: Frontend Production-Build und 7/7 Tests grün; Jira Forge 38/38 Tests
+  grün; offizieller Forge-Linter ohne Befund; Wide-Screen-Rendering bei 2560×1200
+  geprüft. Docker-Frontend neu gebaut und gestartet.
+- Jira-Panel als Forge-App-Version `3.6.0` erfolgreich nach `development` deployt;
+  bestehende Jira-Installation auf `ki-meets-testautomation.atlassian.net` ist laut
+  Forge CLI `Up-to-date`.
+
+## Versionssicherer Testschritt-Editor im Jira-Panel (24.08.2026)
+
+- Verknüpfte Testryn-Testfälle lassen sich im Jira-Issue direkt bearbeiten: Titel,
+  Vorbedingungen sowie Actions und Expected Results; Schritte können hinzugefügt,
+  entfernt und nach oben/unten sortiert werden.
+- Speichern erzeugt sichtbar eine neue immutable Testfallversion. Historische
+  Executions und deren gepinnte Schritte/Ergebnisse bleiben unverändert.
+- Neuer enger `PATCH /api/v1/test-cases/{id}/definition`-Endpunkt verändert keine
+  Metadaten. Optimistic Concurrency über `expectedVersion` verhindert stille
+  Überschreibungen aus veralteten Jira-Tabs (`409 Conflict`).
+- Forge akzeptiert Testfall-IDs nicht blind aus dem Browser, sondern prüft vor dem
+  Schreiben, dass der Test mit dem aktuellen Issue verknüpft und in dessen Coverage-
+  Ergebnis enthalten ist. Das Service Token bleibt ausschließlich im Resolver.
+- Architekturentscheidung in ADR 0016 dokumentiert. Jira selbst bleibt read-only und
+  Testryn die einzige Source of Truth; der dedizierte Forge-Service-Token benötigt
+  für den neuen Pfad künftig `testryn:write`.
+- Verifikation: Backend-Service 5/5 und neuer REST-Integrationstest 1/1 grün; Forge
+  42/42 Tests grün; offizieller Forge-Linter ohne Befund. Im vollständigen Backend-
+  Lauf waren 158/159 grün; ausschließlich die bereits im Backlog dokumentierte
+  zufällige `System.nanoTime() % 100000`-Test-Key-Kollision schlug fehl.
+- Jira-Editor als Forge-App-Version `3.7.0` erfolgreich nach `development` deployt;
+  die Installation auf `ki-meets-testautomation.atlassian.net` ist `Up-to-date`.
+  Der bereits verschlüsselt hinterlegte Service Token besitzt laut Betreiber den
+  benötigten Write-Scope; keine Token-Rotation war erforderlich.
+
+## Jira-native Projekt- und Testfallerstellung (24.08.2026)
+
+- Jira-Panel kann vorhandene Testryn-Projekte durchsuchen/auswählen oder direkt ein
+  neues Projekt mit Key und Name anlegen.
+- Neuer Testfall wird mit Titel, Beschreibung, Preconditions, Priorität, Tags und
+  sortierbaren Action-/Expected-Result-Schritten im Jira-Kontext erstellt und
+  automatisch mit dem aktuellen Issue verknüpft.
+- Atomarer provider-neutraler Endpoint `POST /api/v1/requirement-links/test-cases`:
+  Testfall und RequirementLink entstehen in einer Transaktion; kein verwaister
+  Testfall bei einem Verknüpfungsfehler.
+- Issue-Key wird ausschließlich aus dem Forge Invocation Context übernommen; der
+  Browser kann keinen fremden Jira-Key einschleusen. Die Requirement-URL wird aus
+  der nicht geheimen `JIRA_BASE_URL`-Konfiguration aufgebaut.
+- Testbeschreibung ist nun Teil der Coverage-Darstellung, separat aufklappbar und
+  gemeinsam mit Preconditions und Steps versionssicher editierbar.
+- Verifikation: Backend-Service 5/5, PostgreSQL-REST-Integration 2/2, Forge 46/46;
+  offizieller Forge-Linter ohne Befund.
+- Jira-Erstellungsworkflow als Forge-App-Version `3.8.0` erfolgreich nach
+  `development` deployt; Installation auf `ki-meets-testautomation.atlassian.net`
+  ist `Up-to-date`. Aktualisiertes Backend-Image wurde lokal gebaut und gestartet.
+
+## Versionierte Step-Eingabedaten (24.08.2026)
+
+- Optionales Feld `Input / Data` zwischen Action und Expected Result ergänzt;
+  geeignet für Testwerte, URLs, Credentials-Hinweise oder sonstige Eingabedaten.
+- Feld ist Bestandteil der immutable `TestCaseVersion`; Änderungen erzeugen eine
+  neue Version, während historische Executions ihre gepinnten Eingabedaten behalten.
+- Additive Liquibase-Migration `0008-test-step-input-data.sql`; bestehende Daten und
+  Clients bleiben kompatibel, da das Feld optional/nullable ist.
+- REST-DTOs, Coverage-API, Execution-Snapshots und JSON/CSV/Markdown-Exporte führen
+  Input/Data vollständig mit.
+- Testryn-Frontend und Jira-Panel unterstützen Erstellen, Bearbeiten und Anzeigen
+  direkt zwischen Action und Expected Result.
+- Verifikation: Backend-Service 5/5, PostgreSQL-Integration 2/2, Frontend Production-
+  Build und 7/7 Tests, Forge 46/46 Tests.
+- Jira-Erweiterung als Forge-App-Version `3.9.0` erfolgreich nach `development`
+  deployt; Installation auf `ki-meets-testautomation.atlassian.net` ist
+  `Up-to-date`. Backend und Frontend wurden inklusive Migration neu gebaut und
+  gestartet.
+
+## Konfigurierbare Jira-Cloud-Site und Step-Layout-Fix (24.08.2026)
+
+- Settings enthält nun einen editierbaren Jira-Cloud-Integrationsbereich für Name,
+  Basis-URL, Atlassian-Mailadresse und Aktiv/Inaktiv sowie Speichern und Verbindungstest.
+- Nicht geheime Einstellungen werden über eine API-first-Service-Schicht und
+  Liquibase-Migration `0009-jira-connection-configuration.sql` in PostgreSQL
+  gespeichert; Änderungen gelten ohne Backend-Neustart.
+- Der API-Token bleibt ausschließlich in `TESTRYN_JIRA_API_TOKEN`; weder REST-API
+  noch Browser erhalten den Wert. Jira-URLs sind auf HTTPS und `*.atlassian.net`
+  beschränkt.
+- Die Forge-App bezieht die Jira-Basis-URL beim Erstellen eines Testfalls aus
+  Testryn statt aus einer fest deployten kundenspezifischen Variable.
+- Testfall-Step-Anzeige auf vier echte Spalten (Nummer, Action, Input/Data,
+  Expected Result) korrigiert; unter 900 px wechselt sie in eine lesbare vertikale
+  Darstellung.
+- Verifikation: vollständiges Backend 162/162, Frontend Production-Build und 7/7,
+  Forge 46/46; offizieller Forge-Linter ohne Befund. Migration gegen PostgreSQL
+  erfolgreich und Docker-Backend/-Frontend neu gebaut und gestartet.
+- Forge-App-Version `3.10.0` erfolgreich nach `development` deployt; Installation
+  auf `ki-meets-testautomation.atlassian.net` ist `Up-to-date`.
+
+## Guild-Theme für das eigenständige Frontend (24.08.2026)
+
+- Eigenständige Testryn-Oberfläche auf eine zurückhaltende D&D/RPG-inspirierte
+  „Quality Guild“-Designsprache umgestellt; Jira Forge bleibt bewusst Jira-nativ.
+- Neues D20-Wappen, Palatino/Georgia-Displaytypografie, goldene Gildenführung,
+  arkano-violette Akzente, gravierte Bedienelemente und subtile Kartenraster-Textur.
+- Dark Mode nutzt Obsidian/Leder-Flächen; Light Mode eine eigenständige
+  Pergamentvariante. Statusfarben und fachliche Begriffe bleiben unverändert und
+  eindeutig.
+- Navigation, Dashboard-Metriken, Projekte, Testpläne, Tabellen, Formulare,
+  Testschritte, Buttons, Tabs und leere Zustände folgen denselben Theme-Tokens.
+- Frontend Production-Build und 7/7 Tests grün; beide Modi mit Chrome headless bei
+  1920×1080 visuell geprüft. Frontend-Container neu gebaut und gestartet.
+
+## 17 Designs, Entity-Symbole und ehrlicher Jira-Status (24.08.2026)
+
+- Theme-Auswahl auf fünf persistierte Designs erweitert: die Fantasy-Varianten
+  `Guild Chronicle`, `Arcane Observatory` und `Dragonforge` sowie die schlichten
+  Varianten `Focus` und `Slate`. Jedes Design unterstützt unabhängig System-, Hell-
+  und Dunkelmodus; Jira Forge bleibt bewusst im nativen Atlassian-Stil.
+- Nach Nutzerfeedback um vier weitere Kollektionen mit je drei Designs ergänzt:
+  `Space & Cosmos` (Nebula Command, Lunar Colony, Solar Vanguard), `Animated
+  Worlds` (Cel Quest, Neon Shonen, Cozy Studio), `Cyber Realms` (Synthwave Grid,
+  Holo Terminal, Mecha Core) und `Natural Worlds` (Emerald Grove, Ocean Depths,
+  Desert Dawn). Damit stehen 17 Designs mit jeweils System/Hell/Dunkel bereit.
+- `Animated Worlds` enthält echte, rein dekorative Bewegung: driftende Wolken und
+  Lichtpunkte in Cel Quest, Speedlines/Energiepulse in Neon Shonen sowie langsam
+  schwebende Lichtpartikel in Cozy Studio. `prefers-reduced-motion` schaltet sämtliche
+  Bewegung barrierefrei ab.
+- Nach Web-/Referenzrecherche Cozy Studio als zurückhaltenden, warmen „supportive
+  frame“ mit weichen Karten, Pollen-/Lichtbewegung und geringer visueller Dominanz
+  verfeinert. Das kurzzeitig vorhandene Neon-Shonen-Design wurde auf Nutzerwunsch
+  vollständig durch `Mythic Overdrive · Animated D&D` ersetzt: rotierende arkane
+  Kreise, Partikel-/Runensturm, pulsierende Kartenauren, Zauber-Shimmer, animiertes
+  Wappen und kräftige magische Hover-Reaktionen. Cel Quest blieb unverändert.
+- Mythic Overdrive anschließend auf Nutzerfeedback visuell beruhigt: die als zu wild
+  empfundenen Linien, Beschwörungskreise und der Runensturm wurden entfernt. Ein
+  eigenständiges SVG-Drachenmotiv schwebt nun groß im Hintergrund, mit separat
+  schlagenden Flügeln, Körperbewegung, Aura und glimmendem Auge. Reduced Motion zeigt
+  den Drachen statisch.
+- Cozy Studio und Mythic Overdrive nutzen jetzt zusätzlich zwei eigens erzeugte,
+  lokal ausgelieferte Cinematic-Backgrounds: regnerisches Apartment mit warmem
+  Lampenlicht beziehungsweise ein obsidianfarbenes Drachenreich hinter Burgbögen.
+  Nach Nutzerfeedback wurde der künstlich wirkende Cozy-CSS-Regen vollständig
+  entfernt. Ein reproduzierbar gerendertes transparentes Animated WebP bewegt
+  unregelmäßige Tropfen ausschließlich innerhalb der vier Glasscheiben und lässt
+  die beiden gemalten Laternen samt lokalem Licht flackern. Mythic nutzt weiterhin
+  fallende Asche und Glut; Light, Dark, System und Reduced Motion bleiben unterstützt.
+  Die YouTube-Referenzen werden aus Datenschutz-, Verfügbarkeits- und Lizenzgründen
+  nicht direkt eingebettet.
+- Projekt, Test Case, Testplan und Execution besitzen konsistente, farblich
+  differenzierte Entity-Symbole in zentralen Übersichten, Listen und Detailköpfen;
+  ihre SVG-Geometrie entspricht exakt den jeweiligen Symbolen der Sidebar.
+- Jira-Settings trennen jetzt den konfigurierten/erreichbaren Jira-Cloud-Standort von
+  optionalem direktem REST-API-Enrichment. Eine installierte Forge-App bzw. erreichbare
+  Site wird nicht mehr fälschlich als vollständig „nicht konfiguriert“ dargestellt,
+  nur weil `TESTRYN_JIRA_API_TOKEN` serverseitig fehlt.
+- Der Verbindungstest prüft ohne Credentials die Site-Reichweite über Jira
+  `serverInfo`; mit Credentials weiterhin die authentifizierte Identität über
+  `myself`. Der API-Token wird unverändert nie persistiert oder an den Browser gegeben.
+- Verifikation: Frontend Production-Build und 7/7 Tests; Jira- und Bulk-Regression
+  isoliert 26/26; vollständiger Backend-Wiederholungslauf 163/163. Der erste
+  Komplettlauf hatte einmalig einen nicht reproduzierbaren Testdaten-409.
 
 ## Nächster sinnvoller Schritt
 

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Box, Button, EmptyState, SectionMessage, Spinner, Stack, Text } from "@forge/react";
+import { Box, Button, EmptyState, Inline, SectionMessage, Spinner, Stack, Text } from "@forge/react";
 import { invoke, router } from "@forge/bridge";
 import { TestCaseCard } from "./TestCaseCard";
+import { TestCaseCreator } from "./TestCaseCreator";
 import { orderByAttention, summarizeCoverage } from "./coverageView";
 
 /**
@@ -13,6 +14,9 @@ import { orderByAttention, summarizeCoverage } from "./coverageView";
  */
 export function App() {
   const [result, setResult] = useState(null);
+  const [filter, setFilter] = useState("ALL");
+  const [reloadKey, setReloadKey] = useState(0);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,7 +34,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey]);
 
   if (result === null) {
     return (
@@ -65,24 +69,38 @@ export function App() {
   if (testCases.length === 0) {
     return (
       <Box padding="space.100">
-        <EmptyState
+        {creating ? <TestCaseCreator onCancel={() => setCreating(false)} onCreated={() => { setCreating(false); setReloadKey((value) => value + 1); }} /> : <EmptyState
           header="No Testryn test cases linked"
-          description="Link or create test cases in Testryn to see coverage here."
-          primaryAction={<Button appearance="primary" onClick={() => router.open(appBaseUrl)}>Open Testryn</Button>}
-        />
+          description="Create a test case here and link it to this Jira story automatically."
+          primaryAction={<Button appearance="primary" onClick={() => setCreating(true)}>Create test case</Button>}
+        />}
       </Box>
     );
   }
 
   const ordered = orderByAttention(testCases);
+  const visible = filter === "ALL" ? ordered : ordered.filter((testCase) => (testCase.latestExecution?.status ?? "NOT_RUN") === filter);
 
   return (
     <Box padding="space.100">
       <Stack space="space.150">
         <CoverageSummary testCases={testCases} totalCount={totalCount} />
+        {creating ? <TestCaseCreator onCancel={() => setCreating(false)} onCreated={() => { setCreating(false); setReloadKey((value) => value + 1); }} /> : (
+          <Button appearance="primary" onClick={() => setCreating(true)}>Create test case</Button>
+        )}
+        <Inline space="space.075" shouldWrap alignBlock="center">
+          {["ALL", "FAILED", "BLOCKED", "NOT_RUN", "PASSED"].map((value) => (
+            <Button key={value} appearance={filter === value ? "primary" : "subtle"} onClick={() => setFilter(value)}>
+              {value === "ALL" ? "All" : value.replace("_", " ").toLowerCase()}
+            </Button>
+          ))}
+          <Text size="small" color="color.text.subtlest">{visible.length} shown</Text>
+        </Inline>
         <Stack space="space.100">
-          {ordered.map((testCase) => (
-            <TestCaseCard key={testCase.id} testCase={testCase} appBaseUrl={appBaseUrl} />
+          {visible.map((testCase) => (
+            <TestCaseCard key={testCase.id} testCase={testCase} appBaseUrl={appBaseUrl}
+              onSaved={() => setReloadKey((value) => value + 1)}
+              initialExpanded={testCase.latestExecution?.status === "FAILED" || testCase.latestExecution?.status === "BLOCKED"} />
           ))}
         </Stack>
         {totalCount > testCases.length ? (

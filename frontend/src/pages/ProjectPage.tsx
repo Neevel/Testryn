@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ExecutionsApi,
   ProjectsApi,
@@ -15,11 +15,13 @@ import { LoadingState } from "../components/LoadingState";
 import { StatusBadge } from "../components/StatusBadge";
 import { downloadUrl } from "../api/client";
 import { summarize } from "./executionSummary";
+import { EntityIcon } from "../components/EntityIcon";
 
 type Tab = "overview" | "test-cases" | "test-plans" | "executions" | "requirements";
 
 export function ProjectPage() {
   const { projectKey = "" } = useParams();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = (searchParams.get("tab") as Tab) ?? "overview";
 
@@ -40,8 +42,9 @@ export function ProjectPage() {
       </div>
       <div className="page-header">
         <div className="title-group">
-          <h1>{project ? project.name : projectKey}</h1>
+          <h1 className="entity-title"><EntityIcon kind="project"/>{project ? project.name : projectKey}</h1>
         </div>
+        {project && <div className="actions"><button className="btn btn-danger" onClick={async () => { if (prompt(`Type ${project.key} to permanently delete this project, all test cases, plans, executions and reports.`) !== project.key) return; await ProjectsApi.remove(project.key); navigate("/projects"); }}>Delete project</button></div>}
       </div>
       {project?.description && <p className="page-subtitle" style={{ marginTop: "-1rem" }}>{project.description}</p>}
       <ErrorBanner message={error} />
@@ -63,7 +66,7 @@ export function ProjectPage() {
       </div>
 
       {tab === "overview" && <OverviewTab projectKey={projectKey} />}
-      {tab === "test-cases" && <TestCasesTab projectKey={projectKey} />}
+      {tab === "test-cases" && <TestCasesTab projectKey={projectKey} initialShowForm={searchParams.get("create") === "true"} />}
       {tab === "test-plans" && <TestPlansTab projectKey={projectKey} />}
       {tab === "executions" && <ExecutionsTab projectKey={projectKey} />}
       {tab === "requirements" && <RequirementsTab projectKey={projectKey} />}
@@ -153,6 +156,14 @@ function OverviewTab({ projectKey }: { projectKey: string }) {
         </div>
       </div>
 
+      <div className="section-heading"><div><h2>Test plans</h2><p>Build a reusable scope, then start a version-pinned execution.</p></div><button className="btn btn-secondary btn-sm" onClick={() => window.location.href = `?tab=test-plans`}>Manage test plans</button></div>
+      {plans.length > 0 ? <div className="overview-plan-grid">{plans.slice(0, 6).map((plan) => {
+        const planExecutions = executions.filter((execution) => execution.testPlanId === plan.id).sort((a,b) => b.createdAt.localeCompare(a.createdAt));
+        const latest = planExecutions[0];
+        const counts = latest ? summarize(latest.testCases).counts : null;
+        return <Link className="overview-plan-card" to={`/test-plans/${plan.id}`} key={plan.id}><div><span className="technical-id">PLAN</span><h3>{plan.name}</h3></div><div className="overview-plan-meta"><span><strong>{plan.testCases.length}</strong> tests</span><span><strong>{planExecutions.length}</strong> runs</span></div>{latest ? <div className="plan-latest"><StatusBadge value={latest.status}/><span>{counts?.PASSED ?? 0} passed · {counts?.FAILED ?? 0} failed</span></div> : <span className="faint">Not executed yet</span>}</Link>;
+      })}</div> : <EmptyState title="No test plans yet">Create a test plan to group reusable tests and start executions.</EmptyState>}
+
       <h2>Last execution</h2>
       {lastExecution ? (
         <div className="card">
@@ -173,7 +184,7 @@ function OverviewTab({ projectKey }: { projectKey: string }) {
   );
 }
 
-function TestCasesTab({ projectKey }: { projectKey: string }) {
+function TestCasesTab({ projectKey, initialShowForm = false }: { projectKey: string; initialShowForm?: boolean }) {
   const [page, setPage] = useState(0);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<TestCaseStatus | "">("");
@@ -182,7 +193,7 @@ function TestCasesTab({ projectKey }: { projectKey: string }) {
   const [totalElements, setTotalElements] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(initialShowForm);
 
   function load() {
     setError(null);
@@ -355,7 +366,7 @@ function NewTestCaseForm({ projectKey, onCreated }: { projectKey: string; onCrea
   const [preconditions, setPreconditions] = useState("");
   const [priority, setPriority] = useState<TestCasePriority>("MEDIUM");
   const [tags, setTags] = useState("");
-  const [steps, setSteps] = useState([{ action: "", expectedResult: "" }]);
+  const [steps, setSteps] = useState([{ action: "", inputData: "", expectedResult: "" }]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -373,7 +384,7 @@ function NewTestCaseForm({ projectKey, onCreated }: { projectKey: string; onCrea
           .split(",")
           .map((t) => t.trim())
           .filter(Boolean),
-        steps: steps.map((s, i) => ({ order: i + 1, action: s.action, expectedResult: s.expectedResult })),
+        steps: steps.map((s, i) => ({ order: i + 1, action: s.action, inputData: s.inputData || null, expectedResult: s.expectedResult })),
       });
       onCreated();
     } catch (err) {
@@ -423,6 +434,11 @@ function NewTestCaseForm({ projectKey, onCreated }: { projectKey: string; onCrea
               required
             />
             <input
+              placeholder="Input / Data (optional)"
+              value={step.inputData}
+              onChange={(e) => setSteps(steps.map((s, idx) => (idx === i ? { ...s, inputData: e.target.value } : s)))}
+            />
+            <input
               placeholder="Expected result"
               value={step.expectedResult}
               onChange={(e) => setSteps(steps.map((s, idx) => (idx === i ? { ...s, expectedResult: e.target.value } : s)))}
@@ -438,7 +454,7 @@ function NewTestCaseForm({ projectKey, onCreated }: { projectKey: string; onCrea
             </button>
           </div>
         ))}
-        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSteps([...steps, { action: "", expectedResult: "" }])}>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSteps([...steps, { action: "", inputData: "", expectedResult: "" }])}>
           + Step
         </button>
       </div>

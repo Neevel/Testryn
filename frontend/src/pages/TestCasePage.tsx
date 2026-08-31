@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { JiraApi, RequirementsApi, TestCasesApi } from "../api/endpoints";
 import type { JiraIssuePreview, RequirementLink, TestCase, TestCaseVersion } from "../api/types";
 import { ErrorBanner, errorMessage } from "../components/ErrorBanner";
 import { EmptyState } from "../components/EmptyState";
 import { LoadingState } from "../components/LoadingState";
 import { StatusBadge } from "../components/StatusBadge";
+import { EntityIcon } from "../components/EntityIcon";
 
 export function TestCasePage() {
   const { id = "" } = useParams();
+  const navigate = useNavigate();
   const [testCase, setTestCase] = useState<TestCase | null>(null);
   const [versions, setVersions] = useState<TestCaseVersion[] | null>(null);
   const [links, setLinks] = useState<RequirementLink[] | null>(null);
@@ -46,10 +48,11 @@ export function TestCasePage() {
         <div className="title-group">
           <div className="testcase-heading">
             <span className="technical-id">{testCase.humanId}</span>
-            <h1>{testCase.currentVersion?.title}</h1>
+            <h1 className="entity-title"><EntityIcon kind="testCase"/>{testCase.currentVersion?.title}</h1>
           </div>
         </div>
         <div className="actions">
+          <button className="btn btn-danger" onClick={async () => { if (prompt(`Type ${testCase.humanId} to permanently delete this test case. Execution snapshots remain.`) !== testCase.humanId) return; await TestCasesApi.remove(id); navigate(`/projects/${testCase.projectKey}?tab=test-cases`); }}>Delete</button>
           <button className="btn btn-secondary" onClick={() => setEditing((e) => !e)}>
             {editing ? "Cancel" : "Edit"}
           </button>
@@ -98,6 +101,7 @@ export function TestCasePage() {
                 <div className="test-step" key={step.order}>
                   <span className="step-number">{String(step.order).padStart(2, "0")}</span>
                   <div className="step-content"><span className="step-label">Action</span><div>{step.action}</div></div>
+                  <div className="step-content"><span className="step-label">Input / Data</span><div>{step.inputData || "—"}</div></div>
                   <div className="step-content step-expected"><span className="step-label">Expected result</span><div>{step.expectedResult}</div></div>
                 </div>
               ))}
@@ -145,7 +149,7 @@ function EditForm({ testCase, onSaved }: { testCase: TestCase; onSaved: () => vo
   const [priority, setPriority] = useState(testCase.priority);
   const [tags, setTags] = useState(testCase.tags.join(", "));
   const [automationReference, setAutomationReference] = useState(testCase.automationReference ?? "");
-  const [steps, setSteps] = useState(cv?.steps.map((s) => ({ action: s.action, expectedResult: s.expectedResult })) ?? []);
+  const [steps, setSteps] = useState(cv?.steps.map((s) => ({ action: s.action, inputData: s.inputData ?? "", expectedResult: s.expectedResult })) ?? []);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -165,7 +169,7 @@ function EditForm({ testCase, onSaved }: { testCase: TestCase; onSaved: () => vo
           .map((t) => t.trim())
           .filter(Boolean),
         automationReference: automationReference.trim() || null,
-        steps: steps.map((s, i) => ({ order: i + 1, action: s.action, expectedResult: s.expectedResult })),
+        steps: steps.map((s, i) => ({ order: i + 1, action: s.action, inputData: s.inputData || null, expectedResult: s.expectedResult })),
       });
       onSaved();
     } catch (err) {
@@ -234,6 +238,11 @@ function EditForm({ testCase, onSaved }: { testCase: TestCase; onSaved: () => vo
               required
             />
             <input
+              placeholder="Input / Data (optional)"
+              value={step.inputData}
+              onChange={(e) => setSteps(steps.map((s, idx) => (idx === i ? { ...s, inputData: e.target.value } : s)))}
+            />
+            <input
               value={step.expectedResult}
               onChange={(e) => setSteps(steps.map((s, idx) => (idx === i ? { ...s, expectedResult: e.target.value } : s)))}
               required
@@ -248,7 +257,7 @@ function EditForm({ testCase, onSaved }: { testCase: TestCase; onSaved: () => vo
             </button>
           </div>
         ))}
-        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSteps([...steps, { action: "", expectedResult: "" }])}>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSteps([...steps, { action: "", inputData: "", expectedResult: "" }])}>
           + Step
         </button>
       </div>

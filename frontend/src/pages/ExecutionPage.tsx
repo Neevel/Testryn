@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { downloadUrl } from "../api/client";
 import { ExecutionsApi, ReportsApi } from "../api/endpoints";
 import type { Execution, ExecutionResultStatus, ExecutionStep, ExecutionTestCase, Report } from "../api/types";
@@ -8,6 +8,7 @@ import { EmptyState } from "../components/EmptyState";
 import { LoadingState } from "../components/LoadingState";
 import { StatusBadge } from "../components/StatusBadge";
 import { summarize } from "./executionSummary";
+import { EntityIcon } from "../components/EntityIcon";
 
 const RESULT_ACTIONS: ExecutionResultStatus[] = ["PASSED", "FAILED", "BLOCKED", "SKIPPED"];
 const STATUS_ICON: Record<ExecutionResultStatus, string> = {
@@ -46,6 +47,7 @@ type PendingAction = "COMPLETE" | "ABORT" | null;
 
 export function ExecutionPage() {
   const { id = "" } = useParams();
+  const navigate = useNavigate();
   const [execution, setExecution] = useState<Execution | null>(null);
   const [reports, setReports] = useState<Report[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -212,21 +214,22 @@ export function ExecutionPage() {
       </div>
       <div className="page-header">
         <div className="title-group">
-          <h1>
-            {execution.name} <span className="muted">#{execution.iterationNumber}</span>
+          <h1 className="entity-title">
+            <EntityIcon kind="execution"/>{execution.name} <span className="muted">#{execution.iterationNumber}</span>
           </h1>
           <StatusBadge value={execution.status} />
         </div>
-        {!isTerminal && (
-          <div className="actions">
+        <div className="actions">
+          {!isTerminal && <>
             <button className="btn btn-secondary" onClick={() => setPendingAction("COMPLETE")} disabled={busy}>
               Mark as completed
             </button>
             <button className="btn btn-danger" onClick={() => setPendingAction("ABORT")} disabled={busy}>
               Abort
             </button>
-          </div>
-        )}
+          </>}
+          <button className="btn btn-danger" onClick={async () => { if (prompt(`Type DELETE to permanently delete this execution and its reports.`) !== "DELETE") return; await ExecutionsApi.remove(id); navigate(`/projects/${execution.projectKey}?tab=executions`); }}>Delete execution</button>
+        </div>
       </div>
       <ErrorBanner message={error} />
 
@@ -435,6 +438,7 @@ function RunnerCard({
               <tr>
                 <th style={{ width: "3rem" }}>#</th>
                 <th>Action</th>
+                <th>Input / Data</th>
                 <th>Expected Result</th>
               </tr>
             </thead>
@@ -443,6 +447,7 @@ function RunnerCard({
                 <tr key={step.order}>
                   <td>{step.order}</td>
                   <td>{step.action}</td>
+                  <td>{step.inputData || "—"}</td>
                   <td>{step.expectedResult}</td>
                 </tr>
               ))}
@@ -540,6 +545,7 @@ function StepRow({
             Step {step.order}. {step.action}
           </strong>
           <span className="muted">Expected: {step.expectedResult}</span>
+          {step.inputData ? <span className="muted">Input / Data: {step.inputData}</span> : null}
           {stepResult.actualResult && <span className="muted">Actual: {stepResult.actualResult}</span>}
           {stepResult.failureDetails && (
             <span className="muted">

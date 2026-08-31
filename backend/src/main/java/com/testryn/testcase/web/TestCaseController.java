@@ -1,6 +1,7 @@
 package com.testryn.testcase.web;
 
 import com.testryn.common.error.BadRequestException;
+import com.testryn.common.service.DeletionService;
 import com.testryn.common.web.PageResponse;
 import com.testryn.testcase.domain.TestCase;
 import com.testryn.testcase.domain.TestCasePriority;
@@ -32,11 +33,16 @@ public class TestCaseController {
 
     private final TestCaseService testCaseService;
     private final TestCaseExportService testCaseExportService;
+    private final DeletionService deletionService;
 
-    public TestCaseController(TestCaseService testCaseService, TestCaseExportService testCaseExportService) {
+    public TestCaseController(TestCaseService testCaseService, TestCaseExportService testCaseExportService, DeletionService deletionService) {
         this.testCaseService = testCaseService;
         this.testCaseExportService = testCaseExportService;
+        this.deletionService = deletionService;
     }
+    @DeleteMapping("/api/v1/test-cases/{id}")
+    @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable UUID id) { deletionService.deleteTestCase(id); }
 
     @Operation(
             summary = "Create a test case",
@@ -103,6 +109,20 @@ public class TestCaseController {
         return TestCaseResponse.from(testCaseService.update(id, command));
     }
 
+    @Operation(
+            summary = "Update only a test case definition",
+            description = "Updates title, preconditions and ordered steps as a new immutable version. "
+                    + "Returns 409 when expectedVersion is stale; metadata and historic executions are untouched."
+    )
+    @PatchMapping("/api/v1/test-cases/{id}/definition")
+    public TestCaseResponse updateDefinition(@PathVariable UUID id,
+                                              @Valid @RequestBody UpdateTestCaseDefinitionRequest request) {
+        var command = new TestCaseCommands.UpdateTestCaseDefinitionCommand(
+                request.expectedVersion(), request.title(), request.description(), request.preconditions(),
+                toStepCommands(request.steps()));
+        return TestCaseResponse.from(testCaseService.updateDefinition(id, command));
+    }
+
     @GetMapping("/api/v1/test-cases/{id}/versions")
     public List<TestCaseVersionResponse> versions(@PathVariable UUID id) {
         return testCaseService.findVersions(id).stream().map(TestCaseVersionResponse::from).toList();
@@ -141,6 +161,6 @@ public class TestCaseController {
     }
 
     private List<TestCaseCommands.StepCommand> toStepCommands(List<StepRequest> steps) {
-        return steps.stream().map(s -> new TestCaseCommands.StepCommand(s.action(), s.expectedResult())).toList();
+        return steps.stream().map(s -> new TestCaseCommands.StepCommand(s.action(), s.inputData(), s.expectedResult())).toList();
     }
 }

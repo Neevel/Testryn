@@ -29,6 +29,7 @@ import java.util.regex.Pattern;
 import static com.testryn.testcase.service.TestCaseCommands.CreateTestCaseCommand;
 import static com.testryn.testcase.service.TestCaseCommands.StepCommand;
 import static com.testryn.testcase.service.TestCaseCommands.UpdateTestCaseCommand;
+import static com.testryn.testcase.service.TestCaseCommands.UpdateTestCaseDefinitionCommand;
 
 @Service
 @Transactional
@@ -151,6 +152,24 @@ public class TestCaseService {
         return testCase;
     }
 
+    public TestCase updateDefinition(UUID id, UpdateTestCaseDefinitionCommand command) {
+        if (command.steps() == null || command.steps().isEmpty()) {
+            throw new BadRequestException("A test case requires at least one step");
+        }
+        TestCase testCase = getById(id);
+        TestCaseVersion current = testCase.getCurrentVersion();
+        int currentVersion = current == null ? 0 : current.getVersionNumber();
+        if (command.expectedVersion() != currentVersion) {
+            throw new ConflictException("Test case was changed since it was opened; reload it before saving");
+        }
+
+        var fullCommand = new UpdateTestCaseCommand(
+                command.title(), command.description(), command.preconditions(),
+                command.steps(), testCase.getStatus(), testCase.getPriority(), testCase.getTags(),
+                testCase.getAutomationReference());
+        return update(id, fullCommand);
+    }
+
     /** {@code null}/blank means "not automated" -- trims otherwise, never returns
      * blank. Rejects anything that isn't a machine-friendly token (Abschnitt 8). */
     private String normalizeAutomationReference(String raw) {
@@ -200,6 +219,7 @@ public class TestCaseService {
             TestStep existing = currentSteps.get(i);
             StepCommand incoming = newSteps.get(i);
             if (!Objects.equals(existing.getAction(), incoming.action())
+                    || !Objects.equals(existing.getInputData(), incoming.inputData())
                     || !Objects.equals(existing.getExpectedResult(), incoming.expectedResult())) {
                 return true;
             }
@@ -211,7 +231,7 @@ public class TestCaseService {
         List<TestStep> steps = new ArrayList<>();
         int order = 1;
         for (StepCommand stepCommand : stepCommands) {
-            steps.add(new TestStep(order++, stepCommand.action(), stepCommand.expectedResult()));
+            steps.add(new TestStep(order++, stepCommand.action(), stepCommand.inputData(), stepCommand.expectedResult()));
         }
         return steps;
     }

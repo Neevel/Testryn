@@ -17,6 +17,7 @@ export type TestCasePriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export interface Step {
   order: number;
   action: string;
+  inputData: string | null;
   expectedResult: string;
 }
 
@@ -90,6 +91,7 @@ export interface JiraConnection {
   authType: JiraAuthType;
   email: string | null;
   active: boolean;
+  siteConfigured: boolean;
   tokenConfigured: boolean;
   usable: boolean;
 }

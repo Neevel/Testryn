@@ -1,5 +1,5 @@
 import { fetch } from "@forge/api";
-import { getCoverage } from "../src/resolvers/testrynClient";
+import { createLinkedTestCase, createProject, getCoverage, getProjects, updateTestCaseDefinition } from "../src/resolvers/testrynClient";
 
 jest.mock("@forge/api", () => ({
   fetch: jest.fn(),
@@ -155,5 +155,56 @@ describe("testrynClient.getCoverage", () => {
 
     const [, options] = fetch.mock.calls[0];
     expect(options.headers.Authorization).toBeUndefined();
+  });
+
+  test("updates only a test linked to the current issue", async () => {
+    const testCase = { id: "tc-1", version: 2 };
+    fetch
+      .mockResolvedValueOnce(jsonResponse(200, { requirement: { provider: "JIRA", externalKey: "EVAL-47" }, testCases: [testCase], totalCount: 1 }))
+      .mockResolvedValueOnce(jsonResponse(200, {}));
+    const definition = { expectedVersion: 2, title: "Edited", preconditions: "Ready", steps: [{ action: "A", expectedResult: "B" }] };
+
+    expect(await updateTestCaseDefinition("EVAL-47", "tc-1", definition)).toEqual({ kind: "ok" });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    const [url, options] = fetch.mock.calls[1];
+    expect(url).toBe("https://testryn.example.com/api/v1/test-cases/tc-1/definition");
+    expect(options.method).toBe("PATCH");
+    expect(JSON.parse(options.body)).toEqual(definition);
+  });
+
+  test("rejects an unlinked test without sending a write", async () => {
+    fetch.mockResolvedValueOnce(jsonResponse(200, { requirement: { provider: "JIRA", externalKey: "EVAL-47" }, testCases: [], totalCount: 0 }));
+    const result = await updateTestCaseDefinition("EVAL-47", "foreign", { expectedVersion: 1, title: "X", steps: [{ action: "A", expectedResult: "B" }] });
+    expect(result).toEqual({ kind: "invalid" });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test("maps a stale write to conflict", async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse(200, { requirement: { provider: "JIRA", externalKey: "EVAL-47" }, testCases: [{ id: "tc-1", version: 2 }], totalCount: 1 }))
+      .mockResolvedValueOnce(jsonResponse(409, {}));
+    const result = await updateTestCaseDefinition("EVAL-47", "tc-1", { expectedVersion: 2, title: "X", steps: [{ action: "A", expectedResult: "B" }] });
+    expect(result).toEqual({ kind: "conflict" });
+  });
+
+  test("lists and creates projects through the server-side token", async () => {
+    fetch.mockResolvedValueOnce(jsonResponse(200, [{ key: "EVAL", name: "Evaluation" }]));
+    expect(await getProjects()).toEqual({ kind: "ok", projects: [{ key: "EVAL", name: "Evaluation" }] });
+    fetch.mockResolvedValueOnce(jsonResponse(201, { key: "NEW", name: "New project" }));
+    expect(await createProject({ key: "NEW", name: "New project" })).toEqual({ kind: "ok", project: { key: "NEW", name: "New project" } });
+  });
+
+  test("creates a linked test using the trusted issue key and configured Jira URL", async () => {
+    fetch.mockResolvedValueOnce(jsonResponse(200, { baseUrl: "https://customer.atlassian.net" }));
+    fetch.mockResolvedValueOnce(jsonResponse(201, { id: "tc-48", humanId: "EVAL-TC-1" }));
+    const input = { projectKey: "EVAL", title: "Story test", priority: "MEDIUM", steps: [{ action: "A", expectedResult: "B" }] };
+    expect(await createLinkedTestCase("EVAL-48", input)).toEqual({ kind: "ok", testCase: { id: "tc-48", humanId: "EVAL-TC-1" } });
+    expect(fetch.mock.calls[0][0]).toBe("https://testryn.example.com/api/v1/integrations/jira/connection");
+    const [url, options] = fetch.mock.calls[1];
+    expect(url).toBe("https://testryn.example.com/api/v1/requirement-links/test-cases");
+    const body = JSON.parse(options.body);
+    expect(body.externalKey).toBe("EVAL-48");
+    expect(body.url).toBe("https://customer.atlassian.net/browse/EVAL-48");
+    expect(body.provider).toBe("JIRA");
   });
 });

@@ -2,7 +2,7 @@
   "name": "testryn-jira-forge",
   "version": "0.1.0",
   "private": true,
-  "description": "Jira Forge issue panel: read-only Testryn test coverage inside a Jira issue (ADR 0014).",
+  "description": "Jira Forge issue panel for Testryn coverage and version-safe test definition editing (ADR 0014/0016).",
   "scripts": {
     "test": "jest",
     "lint": "forge lint"

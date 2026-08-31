@@ -87,6 +87,22 @@ class JiraIssueClientHttpTest {
         assertThat(client.fetchQuietly("BIT-999")).isEmpty();
     }
 
+    @Test
+    void connectionTestRecognizesReachableSiteWithoutDirectApiCredentials() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer mockServer = MockRestServiceServer.bindTo(builder).build();
+        mockServer.expect(requestTo(BASE_URL + "/rest/api/3/serverInfo"))
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+        JiraProperties properties = new JiraProperties();
+        properties.setBaseUrl(BASE_URL);
+
+        var result = new JiraIssueClient(properties, builder).testConnection();
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.message()).contains("site is reachable").contains("API token");
+        mockServer.verify();
+    }
+
     private JiraIssueClient client(RestClient.Builder builder) {
         JiraProperties properties = new JiraProperties();
         properties.setBaseUrl(BASE_URL);

@@ -34,15 +34,15 @@ resources:
 
 # No Jira scopes requested: the panel only ever needs the current issue's own key,
 # which useProductContext() already provides for free (Abschnitt 29) -- it never
-# calls the Jira REST API itself. Read-only by design (Abschnitt 4/47): no write
-# scope exists anywhere in this manifest because this MVP performs no writes, to
-# Jira or to Testryn.
+# calls the Jira REST API itself. Definition edits are sent from the Forge resolver
+# to Testryn with its server-side write-scoped service token (ADR 0016); Jira itself
+# is never written and the token never reaches the browser.
 permissions:
   scopes: []
   external:
     fetch:
       backend:
-        - address: https://chris-vision-hurricane-hero.trycloudflare.com
+        - address: https://lyrics-commentary-cleaning-perry.trycloudflare.com
 # TESTRYN_API_BASE_URL / TESTRYN_APP_BASE_URL are plain (non-secret) config -- just
 # URLs, safe to default and to see in `forge variables list`. TESTRYN_API_TOKEN is
 # NOT declared here: encrypted variables are set directly via
@@ -54,3 +54,5 @@ environment:
       default: 'http://localhost:8080'
     - key: TESTRYN_APP_BASE_URL
       default: 'http://localhost:3000'
+    - key: JIRA_BASE_URL
+      default: 'https://ki-meets-testautomation.atlassian.net'

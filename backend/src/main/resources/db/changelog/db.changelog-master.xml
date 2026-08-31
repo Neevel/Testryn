@@ -11,5 +11,8 @@
     <include file="db/changelog/changes/0004-test-case-automation-reference.sql" relativeToChangelogFile="false"/>
     <include file="db/changelog/changes/0005-service-tokens.sql" relativeToChangelogFile="false"/>
     <include file="db/changelog/changes/0006-execution-step-results.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/changes/0007-safe-deletion.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/changes/0008-test-step-input-data.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/changes/0009-jira-connection-configuration.sql" relativeToChangelogFile="false"/>
 
 </databaseChangeLog>

@@ -309,14 +309,25 @@ function CreateServiceTokenModal({ onClose, onCreated }: { onClose: () => void; 
 
 function JiraConnectionSection() {
   const [connection, setConnection] = useState<JiraConnection | null>(null);
+  const [name, setName] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [email, setEmail] = useState("");
+  const [active, setActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<JiraConnectionTestResult | null>(null);
   const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   function load() {
     setError(null);
     JiraApi.connection()
-      .then(setConnection)
+      .then((result) => {
+        setConnection(result);
+        setName(result.name);
+        setBaseUrl(result.baseUrl ?? "");
+        setEmail(result.email ?? "");
+        setActive(result.active);
+      })
       .catch((err) => setError(errorMessage(err)));
   }
 
@@ -336,55 +347,109 @@ function JiraConnectionSection() {
     }
   }
 
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    setTestResult(null);
+    try {
+      const result = await JiraApi.updateConnection({
+        name: name.trim(),
+        baseUrl: baseUrl.trim(),
+        email: email.trim() || undefined,
+        active,
+      });
+      setConnection(result);
+      setName(result.name);
+      setBaseUrl(result.baseUrl ?? "");
+      setEmail(result.email ?? "");
+      setActive(result.active);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <>
-      <h2>Jira Connection</h2>
+      <h2>Jira Cloud Integration</h2>
+      <p className="page-subtitle" style={{ marginTop: "-0.5rem" }}>
+        Connect Testryn to any Jira Cloud site. New requirement previews and links use this configuration.
+      </p>
       <ErrorBanner message={error} />
       {connection === null && !error && <LoadingState label="Loading connection status…" />}
       {connection && (
-        <div className="card" style={{ maxWidth: 560 }}>
-          <div className="form-row">
-            <label>Name</label>
-            <div>{connection.name}</div>
+        <form className="card integration-settings-card" onSubmit={save}>
+          <div className="integration-settings-heading">
+            <div>
+              <strong>Jira Cloud</strong>
+              <div className="form-hint">Requirement source for Jira stories, tasks and bugs</div>
+            </div>
+            <label className="toggle-label">
+              <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+              Active
+            </label>
           </div>
           <div className="form-row">
-            <label>Base URL</label>
-            <div>{connection.baseUrl || <span className="faint">not set</span>}</div>
+            <label htmlFor="jira-name">Connection name</label>
+            <input id="jira-name" value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div className="form-row">
-            <label>Identity</label>
-            <div>{connection.email || <span className="faint">not set</span>}</div>
+            <label htmlFor="jira-base-url">Jira Cloud URL</label>
+            <input
+              id="jira-base-url"
+              type="url"
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder="https://company.atlassian.net"
+              required
+            />
+            <p className="form-hint">Use the site root without <code>/browse</code> or an issue key.</p>
+          </div>
+          <div className="form-row">
+            <label htmlFor="jira-email">Atlassian account email</label>
+            <input id="jira-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <div className="form-row">
             <label>Auth type</label>
-            <div>{connection.authType}</div>
+            <div>API token</div>
           </div>
           <div className="form-row">
-            <label>API token</label>
+            <label>Jira Cloud site</label>
             <div>
-              <span className={`badge ${connection.tokenConfigured ? "badge-success" : ""}`}>
-                {connection.tokenConfigured ? "Configured" : "Not configured"}
+              <span className={`badge ${connection.siteConfigured ? "badge-success" : "badge-warning"}`}>
+                {connection.siteConfigured ? "Connected" : "Not configured"}
               </span>
             </div>
           </div>
           <div className="form-row">
-            <label>Status</label>
+            <label>Direct API enrichment</label>
             <div>
-              <span className={`badge ${connection.active ? "badge-info" : ""}`}>
-                {connection.active ? "Active" : "Inactive"}
-              </span>{" "}
               <span className={`badge ${connection.usable ? "badge-success" : "badge-warning"}`}>
-                {connection.usable ? "Usable" : "Not usable"}
+                {connection.usable ? "Available" : "API token required"}
               </span>
             </div>
+          </div>
+          <div className="form-row">
+            <label>Server-side API token</label>
+            <div><span className={`badge ${connection.tokenConfigured ? "badge-success" : "badge-warning"}`}>
+              {connection.tokenConfigured ? "Configured" : "Not configured"}
+            </span></div>
           </div>
           <p className="form-hint" style={{ marginBottom: "1rem" }}>
-            Configured via environment variables (TESTRYN_JIRA_*) -- see README. The API token itself is never
-            shown here or sent to this page.
+            The installed Jira Forge app and this Jira Cloud site selection are valid without exposing a secret here.
+            Direct issue previews and enrichment additionally use <code>TESTRYN_JIRA_API_TOKEN</code> in the server
+            environment; that token is never shown or sent to this page.
           </p>
-          <button className="btn btn-secondary" onClick={runTest} disabled={testing}>
-            {testing ? "Testing…" : "Test connection"}
-          </button>
+          <div className="toolbar" style={{ marginBottom: 0 }}>
+            <button className="btn" type="submit" disabled={saving || !name.trim() || !baseUrl.trim()}>
+              {saving ? "Saving…" : "Save Jira configuration"}
+            </button>
+            <button className="btn btn-secondary" type="button" onClick={runTest} disabled={testing || saving}>
+              {testing ? "Testing…" : "Test Jira site / API access"}
+            </button>
+          </div>
           {testResult && (
             <p style={{ marginTop: "0.75rem" }}>
               <span className={`badge ${testResult.success ? "badge-success" : "badge-danger"}`}>
@@ -393,7 +458,7 @@ function JiraConnectionSection() {
               <span className="muted">{testResult.message}</span>
             </p>
           )}
-        </div>
+        </form>
       )}
     </>
   );

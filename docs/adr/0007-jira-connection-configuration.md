@@ -3,6 +3,10 @@
 - Status: Angenommen
 - Datum: 2026-08-20
 
+> **Nachtrag 24.08.2026:** Die Aussagen „ausschließlich Environment Variables“ und
+> „kein Schreib-Endpoint“ wurden für nicht geheime Metadaten durch ADR 0017 ersetzt.
+> Das API-Token bleibt weiterhin ausschließlich externe Serverkonfiguration.
+
 ## Kontext
 
 Testryn soll eine Jira-Verbindung konfigurierbar machen (Name, Base URL, Auth-Art,

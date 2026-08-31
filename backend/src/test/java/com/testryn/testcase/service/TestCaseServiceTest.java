@@ -19,6 +19,7 @@ import java.util.UUID;
 
 import static com.testryn.testcase.service.TestCaseCommands.*;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -107,6 +108,36 @@ class TestCaseServiceTest {
         assertThat(version1.getVersionNumber()).isEqualTo(1);
         assertThat(version1.getTitle()).isEqualTo("Erfolgreiche Anmeldung");
         assertThat(version1.getSteps()).hasSize(1);
+    }
+
+    @Test
+    void definitionUpdateCreatesVersionWithoutChangingMetadata() {
+        TestCase testCase = createInitialTestCase();
+        when(testCaseRepository.findById(testCase.getId())).thenReturn(java.util.Optional.of(testCase));
+
+        TestCase updated = service.updateDefinition(testCase.getId(), new UpdateTestCaseDefinitionCommand(
+                1, "Login edited", "new description", "new preconditions",
+                List.of(new StepCommand("Open page", "Page is visible"),
+                        new StepCommand("Sign in", "Dashboard is visible"))));
+
+        assertThat(updated.getCurrentVersion().getVersionNumber()).isEqualTo(2);
+        assertThat(updated.getCurrentVersion().getTitle()).isEqualTo("Login edited");
+        assertThat(updated.getPriority()).isEqualTo(TestCasePriority.HIGH);
+        assertThat(updated.getStatus()).isEqualTo(TestCaseStatus.DRAFT);
+        assertThat(updated.getTags()).containsExactly("smoke");
+    }
+
+    @Test
+    void definitionUpdateRejectsStaleVersion() {
+        TestCase testCase = createInitialTestCase();
+        when(testCaseRepository.findById(testCase.getId())).thenReturn(java.util.Optional.of(testCase));
+
+        assertThatThrownBy(() -> service.updateDefinition(testCase.getId(),
+                new UpdateTestCaseDefinitionCommand(2, "Stale", null, null,
+                        List.of(new StepCommand("A", "B")))))
+                .isInstanceOf(com.testryn.common.error.ConflictException.class)
+                .hasMessageContaining("reload");
+        assertThat(testCase.getCurrentVersion().getVersionNumber()).isEqualTo(1);
     }
 
     private TestCase createInitialTestCase() {

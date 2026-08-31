@@ -7,6 +7,7 @@ import { EmptyState } from "../components/EmptyState";
 import { LoadingState } from "../components/LoadingState";
 import { StatusBadge } from "../components/StatusBadge";
 import { summarize } from "./executionSummary";
+import { EntityIcon } from "../components/EntityIcon";
 
 export function TestPlanPage() {
   const { id = "" } = useParams();
@@ -14,7 +15,7 @@ export function TestPlanPage() {
   const [plan, setPlan] = useState<TestPlan | null>(null);
   const [availableTestCases, setAvailableTestCases] = useState<TestCase[]>([]);
   const [executions, setExecutions] = useState<Execution[] | null>(null);
-  const [selectedTestCaseId, setSelectedTestCaseId] = useState("");
+  const [testCaseQuery, setTestCaseQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -32,22 +33,6 @@ export function TestPlanPage() {
   }
 
   useEffect(load, [id]);
-
-  async function addTestCase(e: React.FormEvent) {
-    e.preventDefault();
-    if (!selectedTestCaseId) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await TestPlansApi.addTestCase(id, selectedTestCaseId);
-      setSelectedTestCaseId("");
-      load();
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function removeTestCase(testCaseId: string) {
     setBusy(true);
@@ -92,9 +77,10 @@ export function TestPlanPage() {
       </div>
       <div className="page-header">
         <div className="title-group">
-          <h1>{plan.name}</h1>
+          <h1 className="entity-title"><EntityIcon kind="testPlan"/>{plan.name}</h1>
         </div>
         <div className="actions">
+          <button className="btn btn-danger" onClick={async () => { if (prompt(`Type ${plan.name} to delete this test plan. Existing executions remain.`) !== plan.name) return; await TestPlansApi.remove(id); navigate(`/projects/${plan.projectKey}?tab=test-plans`); }}>Delete plan</button>
           <button className="btn" onClick={startExecution} disabled={busy || plan.testCases.length === 0}>
             Start new execution
           </button>
@@ -160,19 +146,14 @@ export function TestPlanPage() {
         </div>
       )}
 
-      <form className="toolbar" onSubmit={addTestCase} style={{ marginTop: "1rem" }}>
-        <select value={selectedTestCaseId} onChange={(e) => setSelectedTestCaseId(e.target.value)} style={{ flex: 1 }}>
-          <option value="">Select a test case…</option>
-          {availableTestCases.map((tc) => (
-            <option key={tc.id} value={tc.id}>
-              {tc.humanId} — {tc.currentVersion?.title}
-            </option>
-          ))}
-        </select>
-        <button className="btn" type="submit" disabled={busy || !selectedTestCaseId}>
-          Add
-        </button>
-      </form>
+      <div className="plan-builder">
+        <div className="plan-builder-heading"><div><h2>Add tests</h2><p>Search the project library and add an existing test, or create a missing one.</p></div><Link className="btn btn-secondary" to={`/projects/${plan.projectKey}?tab=test-cases&create=true`}>+ Create test case</Link></div>
+        <input className="search-input catalog-search" value={testCaseQuery} onChange={(e) => setTestCaseQuery(e.target.value)} placeholder="Search test case ID, title or tag…" />
+        <div className="testcase-picker-list">
+          {availableTestCases.filter((tc) => `${tc.humanId} ${tc.currentVersion?.title ?? ""} ${tc.tags.join(" ")}`.toLowerCase().includes(testCaseQuery.toLowerCase())).slice(0, 8).map((tc) => <form className="testcase-picker-row" onSubmit={(e) => { e.preventDefault(); setBusy(true); TestPlansApi.addTestCase(id, tc.id).then(() => { setTestCaseQuery(""); load(); }).catch((err) => setError(errorMessage(err))).finally(() => setBusy(false)); }} key={tc.id}><div><Link to={`/test-cases/${tc.id}`}>{tc.humanId}</Link><strong>{tc.currentVersion?.title}</strong><span>{tc.priority} · {tc.status}{tc.tags.length ? ` · ${tc.tags.join(", ")}` : ""}</span></div><button className="btn btn-secondary btn-sm" type="submit" disabled={busy}>Add to plan</button></form>)}
+          {availableTestCases.length === 0 && <span className="muted">Every test case in this project is already in the plan.</span>}
+        </div>
+      </div>
 
       <h2>Iterations</h2>
       <p className="page-subtitle" style={{ marginTop: "-0.5rem" }}>

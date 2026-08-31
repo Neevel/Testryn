@@ -32,9 +32,9 @@ public class TestCaseExportService {
                 .findAndRegisterModules();
     }
 
-    public record ExportStep(int order, String action, String expectedResult) {
+    public record ExportStep(int order, String action, String inputData, String expectedResult) {
         static ExportStep from(TestStep step) {
-            return new ExportStep(step.getStepOrder(), step.getAction(), step.getExpectedResult());
+            return new ExportStep(step.getStepOrder(), step.getAction(), step.getInputData(), step.getExpectedResult());
         }
     }
 
@@ -76,7 +76,9 @@ public class TestCaseExportService {
                 "preconditions", "steps")).append("\r\n");
         for (ExportTestCase tc : testCases) {
             String steps = tc.steps().stream()
-                    .map(s -> "%d) %s -> %s".formatted(s.order(), s.action(), s.expectedResult()))
+                    .map(s -> "%d) %s%s -> %s".formatted(s.order(), s.action(),
+                            s.inputData() == null || s.inputData().isBlank() ? "" : " [Input: " + s.inputData() + "]",
+                            s.expectedResult()))
                     .reduce((a, b) -> a + " | " + b).orElse("");
             csv.append(csvField(tc.humanId())).append(',')
                     .append(csvField(tc.title())).append(',')
@@ -112,10 +114,11 @@ public class TestCaseExportService {
                 md.append("**Preconditions:** ").append(tc.preconditions()).append("\n\n");
             }
             if (!tc.steps().isEmpty()) {
-                md.append("| # | Action | Expected Result |\n|---|---|---|\n");
+                md.append("| # | Action | Input / Data | Expected Result |\n|---|---|---|---|\n");
                 for (ExportStep step : tc.steps()) {
                     md.append("| ").append(step.order()).append(" | ")
                             .append(step.action().replace("|", "\\|")).append(" | ")
+                            .append(nullToEmpty(step.inputData()).replace("|", "\\|")).append(" | ")
                             .append(step.expectedResult().replace("|", "\\|")).append(" |\n");
                 }
                 md.append("\n");

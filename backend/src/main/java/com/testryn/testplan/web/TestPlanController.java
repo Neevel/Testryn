@@ -1,6 +1,7 @@
 package com.testryn.testplan.web;
 
 import com.testryn.testplan.domain.TestPlan;
+import com.testryn.common.service.DeletionService;
 import com.testryn.testplan.service.TestPlanService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
@@ -18,10 +19,15 @@ import static com.testryn.testplan.web.TestPlanDtos.*;
 public class TestPlanController {
 
     private final TestPlanService testPlanService;
+    private final DeletionService deletionService;
 
-    public TestPlanController(TestPlanService testPlanService) {
+    public TestPlanController(TestPlanService testPlanService, DeletionService deletionService) {
         this.testPlanService = testPlanService;
+        this.deletionService = deletionService;
     }
+    @DeleteMapping("/api/v1/test-plans/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable UUID id) { deletionService.deletePlan(id); }
 
     @Operation(
             summary = "Create a test plan",

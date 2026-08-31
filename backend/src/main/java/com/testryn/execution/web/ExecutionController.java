@@ -2,6 +2,7 @@ package com.testryn.execution.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.testryn.common.error.BadRequestException;
+import com.testryn.common.service.DeletionService;
 import com.testryn.execution.domain.Execution;
 import com.testryn.execution.domain.ExecutionStatus;
 import com.testryn.execution.service.ExecutionService;
@@ -23,10 +24,15 @@ import static com.testryn.execution.web.ExecutionDtos.*;
 public class ExecutionController {
 
     private final ExecutionService executionService;
+    private final DeletionService deletionService;
 
-    public ExecutionController(ExecutionService executionService) {
+    public ExecutionController(ExecutionService executionService, DeletionService deletionService) {
         this.executionService = executionService;
+        this.deletionService = deletionService;
     }
+    @DeleteMapping("/api/v1/executions/{id}")
+    @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable UUID id) { deletionService.deleteExecution(id); }
 
     @Operation(
             summary = "Start an execution from a test plan (a new iteration)",

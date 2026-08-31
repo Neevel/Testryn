@@ -35,6 +35,7 @@ public final class RequirementCoverageDtos {
     public record CoverageStepResponse(
             int order,
             String action,
+            String inputData,
             String expectedResult
     ) {
     }
@@ -67,12 +68,13 @@ public final class RequirementCoverageDtos {
     public record LatestExecutionStepResponse(
             int position,
             String action,
+            String inputData,
             String expectedResult,
             CoverageStepResultResponse result
     ) {
         public static LatestExecutionStepResponse from(com.testryn.execution.domain.ExecutionStepResult stepResult) {
             var step = stepResult.getStep();
-            return new LatestExecutionStepResponse(step.getStepOrder(), step.getAction(), step.getExpectedResult(),
+            return new LatestExecutionStepResponse(step.getStepOrder(), step.getAction(), step.getInputData(), step.getExpectedResult(),
                     CoverageStepResultResponse.from(stepResult));
         }
     }
@@ -115,6 +117,7 @@ public final class RequirementCoverageDtos {
             TestCaseStatus status,
             TestCasePriority priority,
             int version,
+            String description,
             String preconditions,
             List<CoverageStepResponse> steps,
             LatestExecutionResponse latestExecution
@@ -134,9 +137,10 @@ public final class RequirementCoverageDtos {
                     testCase.getStatus(),
                     testCase.getPriority(),
                     version == null ? 0 : version.getVersionNumber(),
+                    version == null ? null : version.getDescription(),
                     version == null ? null : version.getPreconditions(),
                     version == null ? List.of() : version.getSteps().stream()
-                            .map(s -> new CoverageStepResponse(s.getStepOrder(), s.getAction(), s.getExpectedResult()))
+                            .map(s -> new CoverageStepResponse(s.getStepOrder(), s.getAction(), s.getInputData(), s.getExpectedResult()))
                             .toList(),
                     latest == null ? null : LatestExecutionResponse.from(latest)
             );

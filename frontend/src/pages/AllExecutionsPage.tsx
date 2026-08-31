@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ExecutionsApi, ProjectsApi } from "../api/endpoints";
 import type { Execution, Project } from "../api/types";
 import { ErrorBanner, errorMessage } from "../components/ErrorBanner";
 import { EmptyState } from "../components/EmptyState";
 import { LoadingState } from "../components/LoadingState";
 import { StatusBadge } from "../components/StatusBadge";
+import { EntityIcon } from "../components/EntityIcon";
 import { summarize } from "./executionSummary";
 
 interface Row {
@@ -14,6 +15,7 @@ interface Row {
 }
 
 export function AllExecutionsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,7 +52,12 @@ export function AllExecutionsPage() {
         <EmptyState title="No executions yet">Start an execution from a test plan to see it here.</EmptyState>
       )}
 
-      {rows && rows.length > 0 && (
+      {rows && rows.length > 0 && (() => {
+        const status = searchParams.get("status");
+        const result = searchParams.get("result");
+        const visible = rows.filter(({ execution }) => (!status || execution.status === status) && (!result || summarize(execution.testCases).counts[result as keyof ReturnType<typeof summarize>["counts"]] > 0));
+        return <>
+        <div className="quick-filter-bar"><span>Quick filters</span>{["RUNNING","COMPLETED","ABORTED"].map((value) => <button key={value} className={`filter-chip ${status === value ? "active" : ""}`} onClick={() => setSearchParams(status === value ? {} : { status: value })}>{value.toLowerCase()}</button>)}{["PASSED","FAILED","BLOCKED"].map((value) => <button key={value} className={`filter-chip ${result === value ? "active" : ""}`} onClick={() => setSearchParams(result === value ? {} : { result: value })}>{value.toLowerCase()} results</button>)}<strong>{visible.length} shown</strong></div>
         <div className="table-wrap">
           <table>
             <thead>
@@ -63,12 +70,12 @@ export function AllExecutionsPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ execution, projectName }) => {
+              {visible.map(({ execution, projectName }) => {
                 const counts = summarize(execution.testCases).counts;
                 return (
                   <tr key={execution.id}>
                     <td>
-                      <Link to={`/executions/${execution.id}`}>{execution.name}</Link>
+                      <Link className="entity-link" to={`/executions/${execution.id}`}><EntityIcon kind="execution"/>{execution.name}</Link>
                       <div className="faint">#{execution.iterationNumber}</div>
                     </td>
                     <td>{projectName}</td>
@@ -86,7 +93,8 @@ export function AllExecutionsPage() {
             </tbody>
           </table>
         </div>
-      )}
+        </>;
+      })()}
     </div>
   );
 }

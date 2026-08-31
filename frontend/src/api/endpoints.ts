@@ -30,6 +30,7 @@ export const ProjectsApi = {
     api.post<Project>("/api/v1/projects", input),
   update: (key: string, input: { name: string; description?: string }) =>
     api.put<Project>(`/api/v1/projects/${key}`, input),
+  remove: (key: string) => api.del<void>(`/api/v1/projects/${key}`),
 };
 
 export interface TestCaseSearchParams {
@@ -85,6 +86,7 @@ export const TestCasesApi = {
       automationReference?: string | null;
     },
   ) => api.put<TestCase>(`/api/v1/test-cases/${id}`, input),
+  remove: (id: string) => api.del<void>(`/api/v1/test-cases/${id}`),
   exportUrl: (projectKey: string, format: "json" | "csv" | "markdown") =>
     `/api/v1/projects/${projectKey}/test-cases/export?format=${format}`,
 };
@@ -102,6 +104,8 @@ export const RequirementsApi = {
 
 export const JiraApi = {
   connection: () => api.get<JiraConnection>("/api/v1/integrations/jira/connection"),
+  updateConnection: (input: { name: string; baseUrl: string; email?: string; active: boolean }) =>
+    api.put<JiraConnection>("/api/v1/integrations/jira/connection", input),
   testConnection: () => api.post<JiraConnectionTestResult>("/api/v1/integrations/jira/connection/test"),
   previewIssue: (key: string) => api.get<JiraIssuePreview>(`/api/v1/integrations/jira/issues/${encodeURIComponent(key)}`),
 };
@@ -115,6 +119,7 @@ export const TestPlansApi = {
     api.post<TestPlan>(`/api/v1/test-plans/${planId}/test-cases`, { testCaseId }),
   removeTestCase: (planId: string, testCaseId: string) =>
     api.del<void>(`/api/v1/test-plans/${planId}/test-cases/${testCaseId}`),
+  remove: (id: string) => api.del<void>(`/api/v1/test-plans/${id}`),
 };
 
 export const ExecutionsApi = {
@@ -124,6 +129,7 @@ export const ExecutionsApi = {
   createFromPlan: (planId: string, name?: string) =>
     api.post<Execution>(`/api/v1/test-plans/${planId}/executions`, name ? { name } : {}),
   setStatus: (id: string, status: "COMPLETED" | "ABORTED") => api.patch<Execution>(`/api/v1/executions/${id}`, { status }),
+  remove: (id: string) => api.del<void>(`/api/v1/executions/${id}`),
   /**
    * JSON Merge Patch (ADR 0006): only the fields present in `input` are changed;
    * anything omitted keeps its current value on the server. Never send a field with

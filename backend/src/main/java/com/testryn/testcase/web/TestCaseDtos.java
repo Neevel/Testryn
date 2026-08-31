@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 
 import java.time.Instant;
 import java.util.List;
@@ -21,6 +22,7 @@ public final class TestCaseDtos {
 
     public record StepRequest(
             @NotBlank String action,
+            String inputData,
             @NotBlank String expectedResult
     ) {
     }
@@ -28,10 +30,11 @@ public final class TestCaseDtos {
     public record StepResponse(
             int order,
             String action,
+            String inputData,
             String expectedResult
     ) {
         public static StepResponse from(com.testryn.testcase.domain.TestStep step) {
-            return new StepResponse(step.getStepOrder(), step.getAction(), step.getExpectedResult());
+            return new StepResponse(step.getStepOrder(), step.getAction(), step.getInputData(), step.getExpectedResult());
         }
     }
 
@@ -55,6 +58,15 @@ public final class TestCaseDtos {
             @NotNull TestCasePriority priority,
             Set<String> tags,
             String automationReference
+    ) {
+    }
+
+    public record UpdateTestCaseDefinitionRequest(
+            @Positive int expectedVersion,
+            @NotBlank String title,
+            String description,
+            String preconditions,
+            @NotEmpty @Valid List<StepRequest> steps
     ) {
     }
 

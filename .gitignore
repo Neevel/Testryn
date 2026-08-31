@@ -29,6 +29,7 @@ integrations/jira-forge/.container-service-assets/
 
 # Local data volumes
 data/
+backups/
 
 # Claude Code harness state
 .claude/

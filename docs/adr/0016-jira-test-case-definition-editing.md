@@ -1,0 +1,55 @@
+# ADR 0016: Testfalldefinitionen im Jira-Panel bearbeiten
+
+- Status: Angenommen
+- Datum: 2026-08-24
+
+## Kontext
+
+Das read-only Jira-Panel aus ADR 0014 zeigt verknüpfte Testfälle und historische
+Ergebnisse. Für einen Xray-ähnlichen Arbeitsfluss sollen Nutzer die aktuelle
+Testfalldefinition direkt im Kontext der Story bearbeiten können, ohne Jira zum
+Speicher für Testryn-Daten zu machen.
+
+## Entscheidung
+
+- Testryn bleibt die einzige Source of Truth. Forge schreibt ausschließlich über
+  die Testryn-REST-API; Jira speichert keine Kopie der Schritte.
+- `PATCH /api/v1/test-cases/{id}/definition` ist ein enger, provider-neutraler
+  Schreibpfad für Titel, Vorbedingungen und die geordnete Schrittliste. Status,
+  Priorität, Tags, Automation Reference und Requirements sind nicht Teil dieses
+  Requests und können daher nicht versehentlich überschrieben werden.
+- Der Request enthält `expectedVersion`. Stimmt sie nicht mit der aktuellen Version
+  überein, antwortet Testryn mit `409 Conflict`. Ein alter Jira-Tab kann neuere
+  Änderungen damit nicht still überschreiben.
+- Jede inhaltliche Änderung erzeugt nach ADR 0002 eine neue immutable
+  `TestCaseVersion`. Bestehende Executions behalten ihre gepinnte Version und ihre
+  Ergebnisse unverändert.
+- Der Forge-Resolver liest den aktuellen Issue-Key ausschließlich aus dem
+  vertrauenswürdigen Invocation Context. Vor dem PATCH prüft er über die bestehende
+  Coverage-API, dass die vom Browser übergebene Testfall-ID tatsächlich mit diesem
+  Issue verknüpft und in der angezeigten Ergebnismenge enthalten ist.
+- Der Forge-Service-Token benötigt nun `testryn:write` (impliziert read). Jira-REST-
+  Scopes bleiben leer, da weiterhin keine Jira-API aufgerufen oder verändert wird.
+
+## Konsequenzen
+
+Der Nutzer kann Schritte im Jira-Panel hinzufügen, löschen, bearbeiten und sortieren.
+Die zusätzliche Berechtigung betrifft nur den serverseitigen Forge-Resolver; das
+Token erreicht nie den Browser. Bis zur späteren Human-Authentication gilt weiterhin
+das MVP-Vertrauensmodell aus ADR 0012: Jira-Nutzer mit Zugriff auf das Panel handeln
+über die Identität des dedizierten Forge-Service-Tokens.
+
+## Erweiterung: Erstellung aus dem Jira-Kontext
+
+Das Panel kann Projekte auflisten, ein neues Projekt anlegen und einen Testfall direkt
+mit dem aktuellen Issue verknüpfen. `POST /api/v1/requirement-links/test-cases`
+erstellt Testfall und RequirementLink in einer gemeinsamen Transaktion; schlägt die
+Verknüpfung fehl, bleibt kein verwaister Testfall zurück. Die Issue-ID wird weiterhin
+nur aus dem Forge Invocation Context übernommen. Beschreibung und Preconditions sind
+Bestandteil der versionierten Testfalldefinition und können im Panel angezeigt sowie
+bearbeitet werden.
+
+Testschritte besitzen zusätzlich ein optionales, versioniertes `inputData`-Feld
+zwischen Action und Expected Result. Es ist Teil derselben immutable
+`TestCaseVersion`; alte Clients dürfen es weglassen und bestehende Schritte werden
+durch die additive Migration mit `null` weitergeführt.

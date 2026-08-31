@@ -10,6 +10,7 @@ import com.testryn.requirement.provider.RequirementProvider;
 import com.testryn.requirement.repository.RequirementLinkRepository;
 import com.testryn.testcase.domain.TestCase;
 import com.testryn.testcase.service.TestCaseService;
+import com.testryn.testcase.service.TestCaseCommands.CreateTestCaseCommand;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -83,6 +84,16 @@ public class RequirementLinkService {
         RequirementLink link = RequirementLink.create(testCase, provider, externalId, normalizedKey, resolvedUrl,
                 resolvedSummary, issueType, status, description);
         return requirementLinkRepository.save(link);
+    }
+
+    /** Creates and links in one transaction so a failed requirement link never
+     * leaves an orphaned test case behind. */
+    public TestCase createLinkedTestCase(String projectKey, CreateTestCaseCommand command,
+                                         RequirementProviderType provider, String externalKey,
+                                         String url, String summary) {
+        TestCase testCase = testCaseService.create(projectKey, command);
+        create(testCase.getId(), provider, externalKey, url, summary);
+        return testCase;
     }
 
     @Transactional(readOnly = true)

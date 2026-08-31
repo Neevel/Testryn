@@ -9,4 +9,6 @@ import java.util.UUID;
 public interface ReportRepository extends JpaRepository<Report, UUID> {
 
     List<Report> findByExecutionIdOrderByUploadedAtDesc(UUID executionId);
+    List<Report> findByExecutionId(UUID executionId);
+    List<Report> findByExecutionProjectId(UUID projectId);
 }

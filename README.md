@@ -37,6 +37,78 @@ docker compose up --build
 Zum Beenden: `Strg+C`, dann `docker compose down` (Daten bleiben im Volume erhalten;
 `docker compose down -v` löscht auch die Volumes).
 
+## Lokalen Testryn-Stand auf einen anderen Rechner übertragen
+
+Ein Git-Clone enthält nur den Quellcode. Projekte, Test Cases, Requirement Links,
+Executions und Service-Token-Hashes liegen in PostgreSQL; hochgeladene Reports liegen
+in einem separaten Docker-Volume. Für einen vollständigen Rechnerwechsel müssen beide
+Bestände übertragen werden.
+
+Auf dem bisherigen Rechner bei laufendem Docker Desktop:
+
+```powershell
+.\scripts\backup-local.ps1
+```
+
+Das Skript legt unter `backups/testryn-<Zeitstempel>/` einen PostgreSQL-Dump, die
+Report-Dateien und SHA-256-Prüfsummen ab. `backups/` ist von Git ausgeschlossen.
+Den erzeugten Ordner separat und sicher auf den neuen Rechner übertragen.
+
+Auf dem neuen Rechner das Repository klonen, Docker Desktop starten und das Backup
+wiederherstellen:
+
+```powershell
+git clone https://github.com/Neevel/Testryn.git
+cd Testryn
+.\scripts\restore-local.ps1 -BackupDirectory "C:\Pfad\zum\testryn-Backup" -Force
+```
+
+`restore-local.ps1` prüft zuerst die Prüfsummen. `-Force` ist absichtlich Pflicht,
+weil der Restore die lokale Testryn-Datenbank und lokale Report-Dateien ersetzt. Die
+Service-Token-Hashes werden mit übertragen; vorhandene rohe Token-Werte funktionieren
+danach weiter. Vor dem Umzug deshalb mindestens einen funktionierenden Admin-Token
+sicher aufbewahren. Ein `TESTRYN_BOOTSTRAP_TOKEN` greift nach dem Restore nicht, weil
+bereits Service Tokens in der Datenbank existieren.
+
+Rechnergebundene Secrets werden nicht im Backup oder in Git gespeichert. Vor dem
+Start auf dem neuen Rechner daher erneut setzen:
+
+```powershell
+$env:TESTRYN_JIRA_BASE_URL="https://<tenant>.atlassian.net"
+$env:TESTRYN_JIRA_EMAIL="<atlassian-email>"
+$env:TESTRYN_JIRA_API_TOKEN="<klassisches-api-token>"
+docker compose up -d
+```
+
+### Jira-Panel über einen lokalen Quick Tunnel erreichbar machen
+
+Forge Cloud kann `localhost:8080` nicht direkt erreichen. Nach jedem Rechner- oder
+Tunnel-Neustart einen neuen Tunnel öffnen und das Terminal geöffnet lassen:
+
+```powershell
+cloudflared tunnel --url http://localhost:8080
+```
+
+Die ausgegebene `https://<zufällig>.trycloudflare.com`-Adresse muss sowohl als
+`TESTRYN_API_BASE_URL` gesetzt als auch in
+`integrations/jira-forge/manifest.yml` unter
+`permissions.external.fetch.backend` eingetragen werden. Danach:
+
+```powershell
+cd integrations/jira-forge
+npm install
+npx forge login
+npx forge variables set -e development TESTRYN_API_BASE_URL "https://<zufällig>.trycloudflare.com"
+npx forge deploy -e development --approve MAJOR_VERSION_RULE
+npx forge install --upgrade -e development --site <tenant>.atlassian.net --product jira
+```
+
+Die echte Forge-App-ID und die verschlüsselten Forge-Variablen gehören zur bereits
+registrierten Atlassian-App und bleiben bei Verwendung desselben Atlassian-Kontos
+erhalten. Insbesondere muss `TESTRYN_API_TOKEN` nach einem vollständigen
+Datenbank-Restore nicht neu gesetzt werden. Die neue Tunnel-Adresse ist dagegen bei
+jedem Quick Tunnel zu aktualisieren.
+
 ## Architekturüberblick
 
 Modularer Monolith (kein Microservices-Overengineering). Backend: Java 21+, Spring
@@ -75,6 +147,11 @@ TESTRYN_JIRA_API_TOKEN=<token>
 # einmalig beim allerersten Start ohne bestehende Service Tokens -- siehe docs/security.md:
 TESTRYN_BOOTSTRAP_TOKEN=<selbst gewählter Wert>
 ```
+
+`TESTRYN_JIRA_BASE_URL`, `TESTRYN_JIRA_EMAIL`, Verbindungsname und Aktivstatus sind
+Startwerte. Sie können anschließend unter **Settings → Jira Cloud Integration**
+ohne Neustart geändert werden. Der API-Token bleibt dagegen ausschließlich als
+Server-Environment-Variable gespeichert und wird nie an das Frontend ausgegeben.
 
 Die API ist ab diesem Block durchgängig durch Service Tokens geschützt (ADR 0012) --
 Details, Scopes und Bootstrap-Verfahren: [docs/security.md](docs/security.md).
