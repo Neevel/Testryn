@@ -3,6 +3,36 @@
 Strukturierter Produktbacklog. `Now` = aktueller Meilenstein, `Next` = danach
 sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 
+## Now (Jira Cloud OAuth 2.0 (3LO) — Task 4, siehe PROJECT_STATUS.md / ADR 0018)
+
+- [x] Analyse aller 12 Fragen → keine offene Grundsatz-/Benutzerentscheidung;
+      Defaults aus ADR 0005/0007/0012/0017 abgeleitet, ADR 0018 geschrieben
+- [x] `auth_type` persistiert in `jira_connection_configuration` (Default
+      `API_TOKEN`), umschaltbar über `PUT …/connection` (`authType` optional)
+- [x] OAuth-Code nur unter `integration.jira.oauth`; Core/`RequirementProvider`
+      unverändert provider-neutral; `JiraIssueClient` mit zweitem Auth-Zweig
+- [x] `POST …/oauth/authorize-url` (admin), `GET /integrations/jira/oauth/callback`
+      (public, `state`-geschützt, außerhalb `/api/**`), `POST …/oauth/disconnect` (admin)
+- [x] `state`: 256 bit, nur SHA-256 gespeichert, TTL 10 min, atomar einmalig;
+      keine client-gelieferte Redirect-URL; statische HTML-Callback-Seite
+- [x] `jira_oauth_token` (eine Zeile), AES-256-GCM (`SecretCipher`), Schlüssel nur
+      aus `TESTRYN_JIRA_OAUTH_ENCRYPTION_KEY`; kein Klartext in PostgreSQL
+- [x] Refresh: `REQUIRES_NEW` + `PESSIMISTIC_WRITE` + `noRollbackFor`,
+      Rotation des Refresh-Tokens, 2-Thread-Nebenläufigkeitstest (refresh 1×)
+- [x] Fehlerzustände unterscheidbar (`oauthConfigured`/`oauthConnected`/
+      `oauthSiteUrl`/`reauthorizationRequired`); `4xx`→re-auth, `5xx`→transient
+- [x] Site-Auswahl über `accessible-resources` gegen konfigurierte `base_url`
+- [x] Disconnect entfernt nur OAuth-Credentials (Test mit echtem Requirement Link)
+- [x] Settings-UI: Auth-type-Auswahl + OAuth-Status + Connect/Disconnect (nur nicht
+      geheime Zustände)
+- [x] Migration `0010-jira-oauth.sql` (additiv); API_TOKEN-Regression unverändert
+- [x] Backend 212/212, Frontend Build + 7/7, Forge 79/79 + lint, `git diff --check`
+      sauber, Secret-Scan ohne Fund
+- [ ] **Manuell mit echtem OAuth-Client**: Developer-Console-App (Scopes +
+      Callback-URL), `TESTRYN_JIRA_OAUTH_*` setzen, in Settings auf OAUTH2 schalten,
+      „Connect" durchführen, End-to-End gegen die echte Jira-Site verifizieren
+      (Verbindungstest, Issue-Lookup, Enrichment, Ablauf/Refresh, Disconnect)
+
 ## Now (Forge-Deployment + visuelle Live-Abnahme — Task 3, siehe PROJECT_STATUS.md)
 
 - [x] Vor-Deployment: Forge-Jest 79/79, `forge lint` ohne Befund, Frontend-Build +
@@ -181,7 +211,9 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 - **Secret Rotation** für Service Tokens (z. B. "neuen Token erzeugen, alten erst
   nach Umstellung widerrufen" als geführter Workflow statt zweier manueller
   Schritte) — aktuell manuell über Create + Revoke möglich, kein eigener Workflow.
-- **Jira OAuth 2.0** — `JiraAuthType.OAUTH2` existiert bereits als Enum-Wert.
+- ~~**Jira OAuth 2.0**~~ — **umgesetzt (Task 4, ADR 0018)**. Offen bleibt nur die
+  manuelle End-to-End-Verifikation mit einem echten Atlassian-OAuth-Client (siehe
+  Now-Block oben).
 - **Jira Server/Data Center** — die neue Laufzeitkonfiguration akzeptiert aus
   Sicherheitsgründen zunächst ausschließlich Jira Cloud (`*.atlassian.net`).
 - **RBAC über die drei Service-Token-Scopes hinaus** — bewusst nicht in diesem Block

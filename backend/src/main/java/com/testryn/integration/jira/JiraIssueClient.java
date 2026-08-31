@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.testryn.common.error.NotFoundException;
 import com.testryn.common.error.UpstreamServiceException;
+import com.testryn.integration.jira.oauth.JiraOAuthProperties;
+import com.testryn.integration.jira.oauth.JiraOAuthService;
 import com.testryn.requirement.provider.ExternalRequirementInfo;
 import com.testryn.integration.jira.service.JiraConnectionSettings;
 import com.testryn.integration.jira.service.JiraConnectionSettingsService;
@@ -32,16 +34,27 @@ import java.util.stream.StreamSupport;
  * reachable" and "issue not found" with proper HTTP semantics instead of collapsing
  * everything to an empty Optional.
  *
- * <p>Never logs the API token; {@code basicAuthHeader} builds the Authorization
- * header value only, which is never itself logged or echoed back.</p>
+ * <p>Two auth modes (ADR 0018), selected by {@link JiraConnectionSettings#authType()}:
+ * <ul>
+ *   <li>{@code API_TOKEN} (default, unchanged): tenant URL + HTTP Basic
+ *       {@code email:apiToken}.</li>
+ *   <li>{@code OAUTH2}: the {@code api.atlassian.com/ex/jira/{cloudId}} gateway +
+ *       {@code Bearer <access token>}, where the token comes from
+ *       {@link JiraOAuthService#currentAccessToken()} (decrypted, auto-refreshed).</li>
+ * </ul>
+ *
+ * <p>Never logs the API token, the OAuth token, or any Authorization header;
+ * {@code basicAuthHeader} builds a header value only.</p>
  */
 @Component
 public class JiraIssueClient {
 
     private static final Logger log = LoggerFactory.getLogger(JiraIssueClient.class);
+    private static final String ISSUE_PATH = "/rest/api/3/issue/{key}?fields=summary,issuetype,status,description";
 
     private final Supplier<JiraConnectionSettings> settingsSupplier;
     private final RestClient.Builder restClientBuilder;
+    private final JiraOAuthService oauthService;
 
     public JiraIssueClient(JiraProperties properties) {
         // SimpleClientHttpRequestFactory (java.net.HttpURLConnection-based) instead
@@ -57,25 +70,35 @@ public class JiraIssueClient {
      * than building a bare {@code RestClient} internally, so tests can bind a
      * {@code MockRestServiceServer} to it -- exercising real request/response
      * parsing without opening a real socket. {@code @Autowired} disambiguates which
-     * constructor Spring should use, since there are two public ones.
+     * constructor Spring should use, since there are several public ones.
      */
     @Autowired
-    public JiraIssueClient(JiraConnectionSettingsService settingsService, RestClient.Builder restClientBuilder) {
-        this(settingsService::current, restClientBuilder);
+    public JiraIssueClient(JiraConnectionSettingsService settingsService, RestClient.Builder restClientBuilder,
+                           JiraOAuthService oauthService) {
+        this(settingsService::current, restClientBuilder, oauthService);
     }
 
     public JiraIssueClient(JiraProperties properties, RestClient.Builder restClientBuilder) {
-        this(() -> JiraConnectionSettingsService.fromDefaults(properties), restClientBuilder);
+        this(() -> JiraConnectionSettingsService.fromDefaults(properties), restClientBuilder, null);
     }
 
-    private JiraIssueClient(Supplier<JiraConnectionSettings> settingsSupplier,
-                            RestClient.Builder restClientBuilder) {
+    public JiraIssueClient(Supplier<JiraConnectionSettings> settingsSupplier, RestClient.Builder restClientBuilder) {
+        this(settingsSupplier, restClientBuilder, null);
+    }
+
+    JiraIssueClient(Supplier<JiraConnectionSettings> settingsSupplier,
+                    RestClient.Builder restClientBuilder, JiraOAuthService oauthService) {
         this.settingsSupplier = settingsSupplier;
         this.restClientBuilder = restClientBuilder;
+        this.oauthService = oauthService;
     }
 
     public boolean isUsable() {
-        return settingsSupplier.get().usable();
+        JiraConnectionSettings settings = settingsSupplier.get();
+        if (settings.authType() == JiraAuthType.OAUTH2) {
+            return settings.siteConfigured() && oauthService != null && oauthService.status().connected();
+        }
+        return settings.usable();
     }
 
     /** Best-effort lookup used for silent enrichment -- never throws. */
@@ -91,20 +114,17 @@ public class JiraIssueClient {
     /**
      * Explicit lookup for the issue-preview endpoint. Throws
      * {@link NotFoundException} (Jira returned 404) or {@link UpstreamServiceException}
-     * (not configured, unreachable, or any other non-2xx response) instead of
-     * quietly returning nothing.
+     * (not configured, unreachable, auth expired, or any other non-2xx response)
+     * instead of quietly returning nothing.
      */
     public ExternalRequirementInfo fetchOrThrow(String externalKey) {
         JiraConnectionSettings settings = settingsSupplier.get();
-        RestClient restClient = clientFor(settings);
-        if (restClient == null) {
-            throw new UpstreamServiceException("Jira is not configured or not active");
-        }
+        AuthContext auth = authContextOrThrow(settings);
         JsonNode issue;
         try {
-            issue = restClient.get()
-                    .uri("/rest/api/3/issue/{key}?fields=summary,issuetype,status,description", externalKey)
-                    .header(HttpHeaders.AUTHORIZATION, basicAuthHeader(settings))
+            issue = auth.restClient().get()
+                    .uri(ISSUE_PATH, externalKey)
+                    .header(HttpHeaders.AUTHORIZATION, auth.authorizationHeader())
                     .retrieve()
                     .body(JsonNode.class);
         } catch (RestClientResponseException ex) {
@@ -113,6 +133,8 @@ public class JiraIssueClient {
             }
             log.warn("Jira request for {} failed with status {}", externalKey, ex.getStatusCode().value());
             throw new UpstreamServiceException("Jira request failed (HTTP " + ex.getStatusCode().value() + ")");
+        } catch (UpstreamServiceException ex) {
+            throw ex;
         } catch (Exception ex) {
             log.warn("Jira request for {} failed: {}", externalKey, ex.getMessage());
             throw new UpstreamServiceException("Jira is not reachable");
@@ -129,7 +151,18 @@ public class JiraIssueClient {
         if (!settings.siteConfigured()) {
             return JiraConnectionTestResult.failure("Jira Cloud site is not configured or active");
         }
-        RestClient restClient = clientFor(settings);
+        if (settings.authType() == JiraAuthType.OAUTH2) {
+            if (oauthService == null) {
+                return JiraConnectionTestResult.failure("Jira OAuth is not available");
+            }
+            try {
+                JiraOAuthService.ActiveToken token = oauthService.currentAccessToken();
+                return JiraConnectionTestResult.success(oauthService.assertConfiguredSiteVisible(token.accessToken()));
+            } catch (UpstreamServiceException ex) {
+                return JiraConnectionTestResult.failure(ex.getMessage());
+            }
+        }
+        RestClient restClient = apiTokenClient(settings);
         if (restClient == null) {
             return testSiteReachability(settings);
         }
@@ -140,7 +173,8 @@ public class JiraIssueClient {
                     .retrieve()
                     .body(JsonNode.class);
             String displayName = me != null && me.has("displayName") ? me.get("displayName").asText() : null;
-            return JiraConnectionTestResult.success(displayName);
+            return JiraConnectionTestResult.success(displayName != null ? "Connected to Jira as " + displayName
+                    : "Connected to Jira");
         } catch (RestClientResponseException ex) {
             log.warn("Jira connection test failed with status {}", ex.getStatusCode().value());
             if (ex.getStatusCode().value() == 401 || ex.getStatusCode().value() == 403) {
@@ -174,6 +208,28 @@ public class JiraIssueClient {
         }
     }
 
+    /** The base URL + Authorization header to use for an authenticated Jira call,
+     * resolved from the current auth mode. Throws {@link UpstreamServiceException}
+     * when nothing usable is configured (or OAuth needs re-authorization -- the
+     * message from {@link JiraOAuthService} is passed through). */
+    private AuthContext authContextOrThrow(JiraConnectionSettings settings) {
+        if (settings.authType() == JiraAuthType.OAUTH2) {
+            if (oauthService == null) {
+                throw new UpstreamServiceException("Jira OAuth is not available");
+            }
+            JiraOAuthService.ActiveToken token = oauthService.currentAccessToken();
+            RestClient client = restClientBuilder.clone()
+                    .baseUrl(JiraOAuthProperties.API_GATEWAY_BASE + "/ex/jira/" + token.cloudId())
+                    .build();
+            return new AuthContext(client, "Bearer " + token.accessToken());
+        }
+        RestClient client = apiTokenClient(settings);
+        if (client == null) {
+            throw new UpstreamServiceException("Jira is not configured or not active");
+        }
+        return new AuthContext(client, basicAuthHeader(settings));
+    }
+
     private ExternalRequirementInfo toExternalRequirementInfo(String externalKey, JsonNode issue,
                                                                JiraConnectionSettings settings) {
         String id = issue.path("id").asText(null);
@@ -184,6 +240,8 @@ public class JiraIssueClient {
         String status = fields.path("status").path("name").isMissingNode()
                 ? null : fields.path("status").path("name").asText(null);
         String description = extractPlainText(fields.path("description"));
+        // Human-facing browse link always uses the tenant URL, even in OAuth mode
+        // (the api.atlassian.com gateway is for API calls only).
         String url = settings.baseUrl() + "/browse/" + externalKey;
         return new ExternalRequirementInfo(id, externalKey, url, summary, issueType, status, description);
     }
@@ -220,7 +278,7 @@ public class JiraIssueClient {
         return sb.toString();
     }
 
-    private RestClient clientFor(JiraConnectionSettings settings) {
+    private RestClient apiTokenClient(JiraConnectionSettings settings) {
         return settings.usable() ? restClientBuilder.clone().baseUrl(settings.baseUrl()).build() : null;
     }
 
@@ -229,13 +287,14 @@ public class JiraIssueClient {
         return "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
     }
 
+    private record AuthContext(RestClient restClient, String authorizationHeader) {
+    }
+
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record JiraConnectionTestResult(boolean success, String message) {
-        static JiraConnectionTestResult success(String jiraDisplayName) {
-            String message = jiraDisplayName != null
-                    ? "Connected to Jira as " + jiraDisplayName
-                    : "Connected to Jira";
-            return new JiraConnectionTestResult(true, message);
+        static JiraConnectionTestResult success(String jiraDisplayNameOrMessage) {
+            return new JiraConnectionTestResult(true, jiraDisplayNameOrMessage != null
+                    ? jiraDisplayNameOrMessage : "Connected to Jira");
         }
 
         static JiraConnectionTestResult siteReachable() {

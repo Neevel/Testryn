@@ -1,7 +1,10 @@
 package com.testryn.integration.jira.domain;
 
+import com.testryn.integration.jira.JiraAuthType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
@@ -9,7 +12,9 @@ import java.time.Instant;
 
 /**
  * Persisted, non-secret Jira Cloud connection metadata. The API token deliberately
- * remains external configuration and is never written to PostgreSQL.
+ * remains external configuration and is never written to PostgreSQL. {@code
+ * authType} selects between HTTP-Basic-with-API-token and OAuth 2.0 (ADR 0018); the
+ * OAuth access/refresh tokens live encrypted in a separate table, never here.
  */
 @Entity
 @Table(name = "jira_connection_configuration")
@@ -33,6 +38,10 @@ public class JiraConnectionConfiguration {
     @Column(name = "active", nullable = false)
     private boolean active;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "auth_type", nullable = false, length = 20)
+    private JiraAuthType authType = JiraAuthType.API_TOKEN;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
@@ -40,18 +49,20 @@ public class JiraConnectionConfiguration {
         // for JPA
     }
 
-    public static JiraConnectionConfiguration create(String name, String baseUrl, String email, boolean active) {
+    public static JiraConnectionConfiguration create(String name, String baseUrl, String email, boolean active,
+                                                     JiraAuthType authType) {
         JiraConnectionConfiguration configuration = new JiraConnectionConfiguration();
         configuration.id = DEFAULT_ID;
-        configuration.update(name, baseUrl, email, active);
+        configuration.update(name, baseUrl, email, active, authType);
         return configuration;
     }
 
-    public void update(String name, String baseUrl, String email, boolean active) {
+    public void update(String name, String baseUrl, String email, boolean active, JiraAuthType authType) {
         this.name = name;
         this.baseUrl = baseUrl;
         this.email = email;
         this.active = active;
+        this.authType = authType == null ? JiraAuthType.API_TOKEN : authType;
         this.updatedAt = Instant.now();
     }
 
@@ -59,5 +70,6 @@ public class JiraConnectionConfiguration {
     public String getBaseUrl() { return baseUrl; }
     public String getEmail() { return email; }
     public boolean isActive() { return active; }
+    public JiraAuthType getAuthType() { return authType == null ? JiraAuthType.API_TOKEN : authType; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

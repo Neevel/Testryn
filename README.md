@@ -140,18 +140,57 @@ TESTRYN_DB_URL=jdbc:postgresql://localhost:5432/testryn
 TESTRYN_DB_USERNAME=testryn
 TESTRYN_DB_PASSWORD=testryn
 TESTRYN_STORAGE_BASE_PATH=./data/reports
-# optional, für Jira-Anreicherung von Requirement Links:
+# optional, für Jira-Anreicherung von Requirement Links (API-Token-Modus, Default):
 TESTRYN_JIRA_BASE_URL=https://<tenant>.atlassian.net
 TESTRYN_JIRA_EMAIL=<email>
-TESTRYN_JIRA_API_TOKEN=<token>
+TESTRYN_JIRA_API_TOKEN=<klassisches-api-token>
+# optional, alternativer Auth-Modus: Jira Cloud OAuth 2.0 (3LO), siehe unten:
+TESTRYN_JIRA_OAUTH_CLIENT_ID=<client id aus der Atlassian Developer Console>
+TESTRYN_JIRA_OAUTH_CLIENT_SECRET=<client secret>
+TESTRYN_JIRA_OAUTH_REDIRECT_URI=http://localhost:8080/integrations/jira/oauth/callback
+TESTRYN_JIRA_OAUTH_ENCRYPTION_KEY=<Base64 von 32 Zufallsbytes>
 # einmalig beim allerersten Start ohne bestehende Service Tokens -- siehe docs/security.md:
 TESTRYN_BOOTSTRAP_TOKEN=<selbst gewählter Wert>
 ```
 
-`TESTRYN_JIRA_BASE_URL`, `TESTRYN_JIRA_EMAIL`, Verbindungsname und Aktivstatus sind
-Startwerte. Sie können anschließend unter **Settings → Jira Cloud Integration**
-ohne Neustart geändert werden. Der API-Token bleibt dagegen ausschließlich als
-Server-Environment-Variable gespeichert und wird nie an das Frontend ausgegeben.
+`TESTRYN_JIRA_BASE_URL`, `TESTRYN_JIRA_EMAIL`, Verbindungsname, Auth-Art und
+Aktivstatus sind Startwerte. Sie können anschließend unter **Settings → Jira Cloud
+Integration** ohne Neustart geändert werden. API-Token, OAuth-Client-Secret und
+Verschlüsselungsschlüssel bleiben dagegen ausschließlich Server-Environment-
+Variablen und werden nie an das Frontend ausgegeben.
+
+#### Jira Cloud OAuth 2.0 (3LO) einrichten (ADR 0018)
+
+Alternative zu `TESTRYN_JIRA_API_TOKEN`. Der API-Token-Modus bleibt vollständig als
+Rückfall erhalten.
+
+1. **OAuth-2.0-(3LO)-App** in der [Atlassian Developer Console](https://developer.atlassian.com/console/myapps/)
+   anlegen → *Authorization* → *OAuth 2.0 (3LO)*.
+2. **Scopes** hinzufügen: `read:jira-work` und `offline_access` (mehr braucht Testryn
+   nicht — Issue-Lookup und Enrichment).
+3. **Callback-URL** eintragen — sie muss exakt mit `TESTRYN_JIRA_OAUTH_REDIRECT_URI`
+   übereinstimmen:
+   - lokaler Docker-Betrieb: `http://localhost:8080/integrations/jira/oauth/callback`
+   - über einen Tunnel: `https://<tunnel-host>/integrations/jira/oauth/callback`
+     (dann denselben Wert auch als `TESTRYN_JIRA_OAUTH_REDIRECT_URI` setzen und den
+     Tunnel-Host beim Verbindungstest verwenden).
+4. **Client ID / Secret** aus der Console als `TESTRYN_JIRA_OAUTH_CLIENT_ID` /
+   `TESTRYN_JIRA_OAUTH_CLIENT_SECRET` setzen.
+5. **Verschlüsselungsschlüssel** erzeugen (AES-256, Base64 von 32 Bytes) und als
+   `TESTRYN_JIRA_OAUTH_ENCRYPTION_KEY` setzen — z. B.
+   `python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"`.
+   Ohne diesen Schlüssel startet Testryn normal, aber jede OAuth-Aktion meldet
+   „encryption key is not configured".
+6. Backend neu starten, in **Settings → Jira Cloud Integration** die Jira-Cloud-URL
+   speichern, **Auth type** auf *OAuth 2.0 (3LO)* stellen, **Connect with Atlassian**
+   klicken und im Atlassian-Dialog zustimmen. Testryn wählt automatisch die zur
+   konfigurierten Site passende Cloud-ID aus `accessible-resources`.
+7. **Disconnect** entfernt nur die gespeicherten OAuth-Credentials — Test Cases,
+   Requirement Links und Jira-Issues bleiben unberührt.
+
+Access- und Refresh-Token werden AES-256-GCM-verschlüsselt in PostgreSQL abgelegt
+(nie im Klartext), der Refresh-Token wird bei jeder Erneuerung rotiert. Secrets
+erscheinen nie in API-Antworten, Logs oder im Frontend.
 
 Die API ist ab diesem Block durchgängig durch Service Tokens geschützt (ADR 0012) --
 Details, Scopes und Bootstrap-Verfahren: [docs/security.md](docs/security.md).

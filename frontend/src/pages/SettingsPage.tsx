@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { JiraApi, ServiceTokensApi } from "../api/endpoints";
-import type { JiraConnection, JiraConnectionTestResult, ServiceToken, ServiceTokenScope } from "../api/types";
+import type {
+  JiraAuthType,
+  JiraConnection,
+  JiraConnectionTestResult,
+  ServiceToken,
+  ServiceTokenScope,
+} from "../api/types";
 import { clearDevToken, getDevToken, setDevToken } from "../api/devToken";
 import { ErrorBanner, errorMessage } from "../components/ErrorBanner";
 import { EmptyState } from "../components/EmptyState";
@@ -313,10 +319,12 @@ function JiraConnectionSection() {
   const [baseUrl, setBaseUrl] = useState("");
   const [email, setEmail] = useState("");
   const [active, setActive] = useState(true);
+  const [authType, setAuthType] = useState<JiraAuthType>("API_TOKEN");
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<JiraConnectionTestResult | null>(null);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [oauthBusy, setOauthBusy] = useState(false);
 
   function load() {
     setError(null);
@@ -327,6 +335,7 @@ function JiraConnectionSection() {
         setBaseUrl(result.baseUrl ?? "");
         setEmail(result.email ?? "");
         setActive(result.active);
+        setAuthType(result.authType);
       })
       .catch((err) => setError(errorMessage(err)));
   }
@@ -358,16 +367,43 @@ function JiraConnectionSection() {
         baseUrl: baseUrl.trim(),
         email: email.trim() || undefined,
         active,
+        authType,
       });
       setConnection(result);
       setName(result.name);
       setBaseUrl(result.baseUrl ?? "");
       setEmail(result.email ?? "");
       setActive(result.active);
+      setAuthType(result.authType);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function connectOAuth() {
+    setOauthBusy(true);
+    setError(null);
+    try {
+      const { authorizationUrl } = await JiraApi.oauthAuthorizeUrl();
+      window.location.href = authorizationUrl;
+    } catch (err) {
+      setError(errorMessage(err));
+      setOauthBusy(false);
+    }
+  }
+
+  async function disconnectOAuth() {
+    setOauthBusy(true);
+    setError(null);
+    try {
+      const result = await JiraApi.oauthDisconnect();
+      setConnection(result);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setOauthBusy(false);
     }
   }
 
@@ -412,8 +448,16 @@ function JiraConnectionSection() {
             <input id="jira-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <div className="form-row">
-            <label>Auth type</label>
-            <div>API token</div>
+            <label htmlFor="jira-auth-type">Auth type</label>
+            <select
+              id="jira-auth-type"
+              value={authType}
+              onChange={(e) => setAuthType(e.target.value as JiraAuthType)}
+            >
+              <option value="API_TOKEN">API token (HTTP Basic)</option>
+              <option value="OAUTH2">OAuth 2.0 (3LO)</option>
+            </select>
+            <p className="form-hint">Save to apply. API token stays available as a fallback.</p>
           </div>
           <div className="form-row">
             <label>Jira Cloud site</label>
@@ -427,21 +471,68 @@ function JiraConnectionSection() {
             <label>Direct API enrichment</label>
             <div>
               <span className={`badge ${connection.usable ? "badge-success" : "badge-warning"}`}>
-                {connection.usable ? "Available" : "API token required"}
+                {connection.usable ? "Available" : authType === "OAUTH2" ? "Authorization required" : "API token required"}
               </span>
             </div>
           </div>
-          <div className="form-row">
-            <label>Server-side API token</label>
-            <div><span className={`badge ${connection.tokenConfigured ? "badge-success" : "badge-warning"}`}>
-              {connection.tokenConfigured ? "Configured" : "Not configured"}
-            </span></div>
-          </div>
-          <p className="form-hint" style={{ marginBottom: "1rem" }}>
-            The installed Jira Forge app and this Jira Cloud site selection are valid without exposing a secret here.
-            Direct issue previews and enrichment additionally use <code>TESTRYN_JIRA_API_TOKEN</code> in the server
-            environment; that token is never shown or sent to this page.
-          </p>
+          {authType === "API_TOKEN" && (
+            <div className="form-row">
+              <label>Server-side API token</label>
+              <div><span className={`badge ${connection.tokenConfigured ? "badge-success" : "badge-warning"}`}>
+                {connection.tokenConfigured ? "Configured" : "Not configured"}
+              </span></div>
+            </div>
+          )}
+          {authType === "OAUTH2" && (
+            <>
+              <div className="form-row">
+                <label>OAuth client</label>
+                <div><span className={`badge ${connection.oauthConfigured ? "badge-success" : "badge-warning"}`}>
+                  {connection.oauthConfigured ? "Configured" : "Not configured"}
+                </span></div>
+              </div>
+              <div className="form-row">
+                <label>OAuth connection</label>
+                <div>
+                  <span className={`badge ${connection.oauthConnected ? "badge-success" : "badge-warning"}`}>
+                    {connection.oauthConnected ? "Connected" : "Not connected"}
+                  </span>
+                  {connection.oauthSiteUrl && <span className="muted"> {connection.oauthSiteUrl}</span>}
+                  {connection.reauthorizationRequired && (
+                    <span className="badge badge-warning" style={{ marginLeft: "0.5rem" }}>Re-authorization required</span>
+                  )}
+                </div>
+              </div>
+              <div className="toolbar" style={{ marginBottom: "0.75rem" }}>
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  onClick={connectOAuth}
+                  disabled={oauthBusy || saving || !connection.oauthConfigured}
+                >
+                  {oauthBusy ? "Working…" : connection.oauthConnected ? "Re-authorize with Atlassian" : "Connect with Atlassian"}
+                </button>
+                {connection.oauthConnected && (
+                  <button className="btn btn-secondary" type="button" onClick={disconnectOAuth} disabled={oauthBusy || saving}>
+                    Disconnect
+                  </button>
+                )}
+              </div>
+              <p className="form-hint" style={{ marginBottom: "1rem" }}>
+                The OAuth client id/secret and the token encryption key are server environment configuration
+                (<code>TESTRYN_JIRA_OAUTH_*</code>) and are never shown or sent to this page. Access and refresh
+                tokens are stored encrypted. Disconnecting removes only those credentials — no test cases,
+                requirement links or Jira issues are touched.
+              </p>
+            </>
+          )}
+          {authType === "API_TOKEN" && (
+            <p className="form-hint" style={{ marginBottom: "1rem" }}>
+              The installed Jira Forge app and this Jira Cloud site selection are valid without exposing a secret here.
+              Direct issue previews and enrichment additionally use <code>TESTRYN_JIRA_API_TOKEN</code> in the server
+              environment; that token is never shown or sent to this page.
+            </p>
+          )}
           <div className="toolbar" style={{ marginBottom: 0 }}>
             <button className="btn" type="submit" disabled={saving || !name.trim() || !baseUrl.trim()}>
               {saving ? "Saving…" : "Save Jira configuration"}

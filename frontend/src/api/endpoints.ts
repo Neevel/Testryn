@@ -3,6 +3,8 @@ import type {
   Execution,
   ExecutionResult,
   ExecutionResultStatus,
+  JiraAuthorizationUrl,
+  JiraAuthType,
   JiraConnection,
   JiraConnectionTestResult,
   JiraIssuePreview,
@@ -104,10 +106,18 @@ export const RequirementsApi = {
 
 export const JiraApi = {
   connection: () => api.get<JiraConnection>("/api/v1/integrations/jira/connection"),
-  updateConnection: (input: { name: string; baseUrl: string; email?: string; active: boolean }) =>
-    api.put<JiraConnection>("/api/v1/integrations/jira/connection", input),
+  updateConnection: (input: {
+    name: string;
+    baseUrl: string;
+    email?: string;
+    active: boolean;
+    authType?: JiraAuthType;
+  }) => api.put<JiraConnection>("/api/v1/integrations/jira/connection", input),
   testConnection: () => api.post<JiraConnectionTestResult>("/api/v1/integrations/jira/connection/test"),
   previewIssue: (key: string) => api.get<JiraIssuePreview>(`/api/v1/integrations/jira/issues/${encodeURIComponent(key)}`),
+  oauthAuthorizeUrl: () =>
+    api.post<JiraAuthorizationUrl>("/api/v1/integrations/jira/oauth/authorize-url"),
+  oauthDisconnect: () => api.post<JiraConnection>("/api/v1/integrations/jira/oauth/disconnect"),
 };
 
 export const TestPlansApi = {

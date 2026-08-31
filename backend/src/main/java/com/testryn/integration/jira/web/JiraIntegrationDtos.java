@@ -2,6 +2,7 @@ package com.testryn.integration.jira.web;
 
 import com.testryn.integration.jira.JiraAuthType;
 import com.testryn.integration.jira.JiraIssueClient.JiraConnectionTestResult;
+import com.testryn.integration.jira.oauth.JiraOAuthService.OAuthStatus;
 import com.testryn.integration.jira.service.JiraConnectionSettings;
 import com.testryn.requirement.provider.ExternalRequirementInfo;
 import jakarta.validation.constraints.NotBlank;
@@ -12,8 +13,9 @@ public final class JiraIntegrationDtos {
     }
 
     /**
-     * Never includes the API token or any other secret -- only whether one is
-     * configured ({@code tokenConfigured}). See AGENTS.md -> Sicherheit.
+     * Never includes the API token, the OAuth client secret, the encryption key, or
+     * an access/refresh token -- only booleans and the (non-secret) site URL. See
+     * AGENTS.md -> Sicherheit, ADR 0018.
      */
     public record JiraConnectionResponse(
             String name,
@@ -23,9 +25,14 @@ public final class JiraIntegrationDtos {
             boolean active,
             boolean siteConfigured,
             boolean tokenConfigured,
-            boolean usable
+            boolean usable,
+            // OAuth 2.0 (ADR 0018) -- all non-secret status only:
+            boolean oauthConfigured,
+            boolean oauthConnected,
+            String oauthSiteUrl,
+            boolean reauthorizationRequired
     ) {
-        public static JiraConnectionResponse from(JiraConnectionSettings settings) {
+        public static JiraConnectionResponse from(JiraConnectionSettings settings, OAuthStatus oauth) {
             return new JiraConnectionResponse(
                     settings.name(),
                     settings.baseUrl(),
@@ -34,18 +41,29 @@ public final class JiraIntegrationDtos {
                     settings.active(),
                     settings.siteConfigured(),
                     settings.tokenConfigured(),
-                    settings.usable()
+                    settings.authType() == JiraAuthType.OAUTH2 ? oauth.connected() && settings.siteConfigured()
+                            : settings.usable(),
+                    oauth.configured(),
+                    oauth.connected(),
+                    oauth.siteUrl(),
+                    oauth.reauthorizationRequired()
             );
         }
     }
 
-    /** Non-secret settings only. API tokens remain external server configuration. */
+    /** Non-secret settings only. API tokens and OAuth credentials remain external
+     * server configuration. {@code authType} is optional -- omit it to keep the
+     * current value. */
     public record UpdateJiraConnectionRequest(
             @NotBlank String name,
             @NotBlank String baseUrl,
             String email,
-            boolean active
+            boolean active,
+            JiraAuthType authType
     ) {
+    }
+
+    public record JiraAuthorizationUrlResponse(String authorizationUrl) {
     }
 
     public record JiraConnectionTestResponse(boolean success, String message) {

@@ -51,6 +51,18 @@ testryn:
     api-token: ${TESTRYN_JIRA_API_TOKEN:}
     auth-type: ${TESTRYN_JIRA_AUTH_TYPE:API_TOKEN}
     active: ${TESTRYN_JIRA_ACTIVE:true}
+    # OAuth 2.0 (3LO) client credentials (ADR 0018). Only needed when the connection's
+    # authType is OAUTH2 -- the application starts and runs fine in API_TOKEN mode
+    # without any of these. Never commit real values (use a gitignored .env / a
+    # compose override / your platform's secret store); docker-compose.yml only
+    # references the variable names.
+    oauth:
+      client-id: ${TESTRYN_JIRA_OAUTH_CLIENT_ID:}
+      client-secret: ${TESTRYN_JIRA_OAUTH_CLIENT_SECRET:}
+      # Must match the callback URL registered in the Atlassian developer console.
+      redirect-uri: ${TESTRYN_JIRA_OAUTH_REDIRECT_URI:}
+      # AES-256 key for the persisted access/refresh tokens: Base64 of exactly 32 bytes.
+      encryption-key: ${TESTRYN_JIRA_OAUTH_ENCRYPTION_KEY:}
   security:
     # Bootstrap-only (Abschnitt 12): becomes the first ADMIN service token, but only
     # if no service tokens exist yet -- see ServiceTokenBootstrap. Empty/unset means

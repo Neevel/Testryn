@@ -7,6 +7,99 @@ Stand: 2026-08-31
 
 ## Aktueller Meilenstein
 
+**Jira Cloud OAuth 2.0 (3LO): implementiert (Task 4, ADR 0018).** OAUTH2 ist jetzt
+eine zweite, gleichwertige Auth-Art derselben einen Jira-Verbindung; **API_TOKEN
+bleibt Default und vollständig kompatibel** (der OAuth-Pfad liest die Token-Tabelle
+nur im OAUTH2-Modus, `TESTRYN_JIRA_API_TOKEN` funktioniert unverändert).
+
+**Architekturentscheidung**: keine offene Grundsatz- oder Benutzerentscheidung —
+für jede der 12 Analysefragen existiert ein aus ADR 0005/0007/0012/0017 abgeleiteter
+Default. Umgesetzt ohne Stopp. Kern:
+
+- `auth_type` wandert aus reiner Env-Konfiguration in `jira_connection_configuration`
+  (Spalte, Default `'API_TOKEN'`), umschaltbar über das bestehende
+  `PUT /api/v1/integrations/jira/connection` (`authType` optional — omit = unverändert).
+- OAuth-Code ausschließlich unter `com.testryn.integration.jira.oauth`. `RequirementProvider`,
+  `RequirementLink`, das `requirement`-Modul und das Core-Domain-Modell unverändert
+  und provider-neutral. `JiraIssueClient` bekommt einen zweiten Auth-Zweig, sonst nichts.
+- Der Admin startet den Flow über die Settings-UI mit seinem `testryn:admin`-Service-Token
+  — Human-User-Auth bleibt separat (ADR 0012). `POST …/oauth/authorize-url` und
+  `POST …/oauth/disconnect` erfordern `testryn:admin` (eigener SecurityConfig-Matcher).
+- `GET /integrations/jira/oauth/callback` liegt **außerhalb `/api/**`** (ein
+  Atlassian-Browser-Redirect kann keinen Service-Token tragen), permitAll, geschützt
+  ausschließlich über `state`: 256 bit, nur als SHA-256 gespeichert, TTL 10 min,
+  einmalig (atomarer `@Modifying`-Delete, betroffene Zeilen == 1) → replay-sicher.
+  Keine Redirect-URL wird je vom Client übernommen; `redirect_uri` kommt ausnahmslos
+  aus `TESTRYN_JIRA_OAUTH_REDIRECT_URI`. Der Callback rendert eine kleine statische
+  HTML-Statusseite, keine Weiterleitung.
+- Access-/Refresh-Token: `jira_oauth_token` (eine Zeile, `id='default'`),
+  **AES-256-GCM-verschlüsselt** (`SecretCipher`, `javax.crypto`, 12-Byte-IV je
+  Verschlüsselung, 128-bit-Tag, `base64(iv||ct||tag)`). Schlüssel nur aus
+  `TESTRYN_JIRA_OAUTH_ENCRYPTION_KEY` (Base64 von 32 Bytes). Keine Klartext-Spalte.
+  Fehlt der Schlüssel: Start unbeeinträchtigt, nur OAuth-Operationen scheitern mit
+  klarer Meldung.
+- **Refresh atomar & nebenläufigkeitssicher**: `currentAccessToken()` ist
+  `@Transactional(REQUIRES_NEW, noRollbackFor = UpstreamServiceException.class)` und
+  lädt die Token-Zeile per `@Lock(PESSIMISTIC_WRITE)` (`SELECT … FOR UPDATE`).
+  Nebenläufige Aufrufer serialisieren; der zweite sieht danach den bereits rotierten
+  Token und refresht nicht erneut (per 2-Thread-Test verifiziert: `refresh` genau
+  1×). REQUIRES_NEW verhindert, dass ein Enrichment-Fehler die umgebende Transaktion
+  (z. B. Requirement-Link-Anlage) vergiftet; `noRollbackFor` sorgt dafür, dass beim
+  endgültig toten Refresh-Token die Löschung der Zeile committet. Rotation: neuer
+  Access- UND Refresh-Token verschlüsselt zurückgeschrieben, alter Refresh-Token
+  ersetzt. Atlassians 10-Minuten-Reuse-Leeway deckt den Cross-Instance-Fall.
+- **Site-Bestimmung** über `accessible-resources`: Testryn wählt die Site, deren
+  Host der bereits konfigurierten `base_url` entspricht (kein UI-Auswahlschritt).
+  Kein Treffer → `SITE_MISMATCH`. HTTPS + `*.atlassian.net` bleibt erzwungen.
+- **Fehlerzustände** unterscheidbar in `GET …/connection`: `oauthConfigured`,
+  `oauthConnected`, `oauthSiteUrl`, `reauthorizationRequired`. Refresh-`4xx`
+  (`invalid_grant`) → tote Zeile gelöscht + „re-authorize"; `5xx`/Netz → Zeile
+  bleibt, „not reachable".
+- **Disconnect** (`POST …/oauth/disconnect`, admin): Best-Effort-Revoke bei
+  `auth.atlassian.com/oauth/revoke`, dann Löschen der `jira_oauth_token`-Zeile.
+  **Niemals** Test Cases, Requirement Links, Executions oder Jira-Issues (per Test
+  mit echtem Requirement Link verifiziert).
+- Outbound-HTTP (`JiraOAuthClient`, `JiraIssueClient`-OAUTH2-Zweig) weiterhin
+  `RestClient` + `SimpleClientHttpRequestFactory`, nie JDK-`HttpClient` (AGENTS.md §6a).
+
+**Benötigte Atlassian-Scopes**: `read:jira-work` + `offline_access` (minimal — der
+Verbindungstest nutzt `accessible-resources`, braucht daher kein `read:jira-user`).
+
+**Neue Environment Variables**: `TESTRYN_JIRA_OAUTH_CLIENT_ID`,
+`TESTRYN_JIRA_OAUTH_CLIENT_SECRET`, `TESTRYN_JIRA_OAUTH_REDIRECT_URI`,
+`TESTRYN_JIRA_OAUTH_ENCRYPTION_KEY` (alle optional; nur im OAUTH2-Modus nötig; in
+`application.yml` + `docker-compose.yml` nur als Namen/Platzhalter).
+
+**DB (Migration `0010-jira-oauth.sql`, additiv)**:
+`jira_connection_configuration.auth_type VARCHAR(20) NOT NULL DEFAULT 'API_TOKEN'`;
+neue Tabellen `jira_oauth_state` (state_hash, created_at, expires_at) und
+`jira_oauth_token` (id, access/refresh_token_ciphertext, access_token_expires_at,
+cloud_id, site_url, scopes, obtained_at, updated_at). Bestandsinstallationen laufen
+ohne Änderung im API-Token-Modus weiter.
+
+**API/UI**: neue Endpunkte `POST /api/v1/integrations/jira/oauth/authorize-url`
+(admin), `GET /integrations/jira/oauth/callback` (public), `POST
+/api/v1/integrations/jira/oauth/disconnect` (admin); `PUT …/connection` akzeptiert
+optionales `authType`; `GET …/connection` liefert zusätzlich die vier
+OAuth-Statusfelder (keine Secrets). Settings-UI: Auth-type-Auswahl (API token /
+OAuth 2.0), OAuth-Client-/Verbindungsstatus-Badges, „Connect with Atlassian" /
+„Disconnect" — zeigt nur nicht geheime Zustände.
+
+**Tests**: **Backend 212/212 grün** (163 vorher + 49 neu: `SecretCipherTest` 6,
+`JiraOAuthStateTest` 3, `JiraOAuthClientTest` 6, `JiraIssueClientOAuthTest` 4,
+`JiraOAuthServiceIntegrationTest` 17, `JiraOAuthEndpointsTest` 9,
+`JiraOAuthMissingKeyTest` 3, `JiraOAuthSecretLoggingTest` 1). Kein Flake in diesem
+Lauf (die bekannte `System.nanoTime() % 100000`-Test-Key-Kollision trat nicht auf;
+bleibt ein separater Task). Frontend `npm run build` + 7/7 grün. **Forge 79/79
+Jest grün** und `forge lint` ohne Befund (Forge fachlich unverändert).
+`git diff --check` sauber, Secret-Scan ohne echten Fund.
+
+**Manuell mit echtem Atlassian-OAuth-Client noch nötig** (kein Live-Deployment in
+diesem Block): OAuth-2.0-(3LO)-App in der Developer Console anlegen (Scopes +
+Callback-URL), die vier `TESTRYN_JIRA_OAUTH_*`-Variablen setzen, in den Settings auf
+OAUTH2 schalten und „Connect" durchführen, dann End-to-End gegen die echte Site
+verifizieren (Verbindungstest, Issue-Lookup, Enrichment, Ablauf/Refresh, Disconnect).
+
 **Task 3 (Forge-Deployment + visuelle Live-Abnahme): Deployment erledigt, visuelle
 Abnahme weiterhin offen.**
 
