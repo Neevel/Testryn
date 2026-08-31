@@ -6,6 +6,7 @@ import {
   getProjects,
   linkExistingTestCase,
   searchTestCases,
+  startExecution,
   updateTestCaseDefinition,
 } from "../src/resolvers/testrynClient";
 
@@ -298,5 +299,90 @@ describe("testrynClient.getCoverage", () => {
     fetch.mockResolvedValueOnce(jsonResponse(200, { baseUrl: "https://customer.atlassian.net" }));
     fetch.mockRejectedValueOnce(new Error(`boom with ${token}`));
     expect(JSON.stringify(await linkExistingTestCase("EVAL-48", "tc-1"))).not.toContain(token);
+  });
+
+  function coverageResponse(testCases) {
+    return jsonResponse(200, { requirement: { provider: "JIRA", externalKey: "EVAL-47" }, testCases, totalCount: testCases.length });
+  }
+
+  test("startExecution verifies every id against this issue's coverage, then reuses the ad-hoc endpoint", async () => {
+    fetch.mockResolvedValueOnce(coverageResponse([
+      { id: "tc-1", projectKey: "EVAL", version: 3 },
+      { id: "tc-2", projectKey: "EVAL", version: 1 },
+      { id: "tc-3", projectKey: "EVAL", version: 2 },
+    ]));
+    fetch.mockResolvedValueOnce(jsonResponse(201, { id: "exec-9", name: "EVAL – Iteration 4" }));
+
+    const result = await startExecution("EVAL-47", { testCaseIds: ["tc-1", "tc-3"], name: "  Smoke  " });
+
+    expect(result).toEqual({ kind: "ok", executionId: "exec-9", executionName: "EVAL – Iteration 4" });
+    expect(fetch.mock.calls[0][0]).toContain("/api/v1/requirement-links/coverage?provider=jira&externalKey=EVAL-47");
+    const [url, options] = fetch.mock.calls[1];
+    expect(url).toBe("https://testryn.example.com/api/v1/projects/EVAL/executions");
+    expect(options.method).toBe("POST");
+    expect(JSON.parse(options.body)).toEqual({ name: "Smoke", testCaseIds: ["tc-1", "tc-3"] });
+  });
+
+  test("startExecution sends a null name when none was given", async () => {
+    fetch.mockResolvedValueOnce(coverageResponse([{ id: "tc-1", projectKey: "EVAL" }]));
+    fetch.mockResolvedValueOnce(jsonResponse(201, { id: "exec-1", name: "auto" }));
+
+    await startExecution("EVAL-47", { testCaseIds: ["tc-1"] });
+
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({ name: null, testCaseIds: ["tc-1"] });
+  });
+
+  test("startExecution rejects an id that is not linked to this issue, without creating anything", async () => {
+    fetch.mockResolvedValueOnce(coverageResponse([{ id: "tc-1", projectKey: "EVAL" }]));
+
+    const result = await startExecution("EVAL-47", { testCaseIds: ["tc-1", "tc-foreign"] });
+
+    expect(result).toEqual({ kind: "invalid" });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test("startExecution rejects a selection spanning more than one project", async () => {
+    fetch.mockResolvedValueOnce(coverageResponse([
+      { id: "tc-1", projectKey: "EVAL" },
+      { id: "tc-2", projectKey: "CORE" },
+    ]));
+
+    const result = await startExecution("EVAL-47", { testCaseIds: ["tc-1", "tc-2"] });
+
+    expect(result).toEqual({ kind: "invalid", reason: "multiProject" });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test("startExecution rejects an empty or non-string id list before calling Testryn", async () => {
+    expect(await startExecution("EVAL-47", { testCaseIds: [] })).toEqual({ kind: "invalid" });
+    expect(await startExecution("EVAL-47", { testCaseIds: [42] })).toEqual({ kind: "invalid" });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test("startExecution propagates an unavailable/unauthorized coverage result unchanged", async () => {
+    fetch.mockResolvedValueOnce(jsonResponse(401, {}));
+    expect(await startExecution("EVAL-47", { testCaseIds: ["tc-1"] })).toEqual({ kind: "unauthorized" });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test("startExecution maps a 403 on creation to 'unauthorized' and a network failure to 'unavailable'", async () => {
+    fetch.mockResolvedValueOnce(coverageResponse([{ id: "tc-1", projectKey: "EVAL" }]));
+    fetch.mockResolvedValueOnce(jsonResponse(403, { code: "FORBIDDEN" }));
+    expect(await startExecution("EVAL-47", { testCaseIds: ["tc-1"] })).toEqual({ kind: "unauthorized" });
+
+    fetch.mockResolvedValueOnce(coverageResponse([{ id: "tc-1", projectKey: "EVAL" }]));
+    fetch.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+    expect(await startExecution("EVAL-47", { testCaseIds: ["tc-1"] })).toEqual({ kind: "unavailable" });
+  });
+
+  test("startExecution never leaks the token, on success or failure", async () => {
+    const token = "testryn_secret_token_value_that_must_never_leak";
+    fetch.mockResolvedValueOnce(coverageResponse([{ id: "tc-1", projectKey: "EVAL" }]));
+    fetch.mockResolvedValueOnce(jsonResponse(201, { id: "exec-1", name: "x" }));
+    expect(JSON.stringify(await startExecution("EVAL-47", { testCaseIds: ["tc-1"] }))).not.toContain(token);
+
+    fetch.mockResolvedValueOnce(coverageResponse([{ id: "tc-1", projectKey: "EVAL" }]));
+    fetch.mockRejectedValueOnce(new Error(`boom with ${token}`));
+    expect(JSON.stringify(await startExecution("EVAL-47", { testCaseIds: ["tc-1"] }))).not.toContain(token);
   });
 });

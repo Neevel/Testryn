@@ -196,6 +196,76 @@ export async function createLinkedTestCase(issueKey, input) {
     (created) => ({ kind: "ok", testCase: created }));
 }
 
+/**
+ * Starts a new Testryn execution for a subset of the test cases linked to the
+ * current Jira issue (ADR 0016 extension / Task 2). Jira stays read-only.
+ *
+ * Reuses the existing provider-neutral ad-hoc execution endpoint
+ * `POST /api/v1/projects/{projectKey}/executions` unchanged -- that endpoint
+ * already builds an immutable snapshot pinned to each test case's current version
+ * (ADR 0003), so no Forge-specific path bypasses the snapshot/versioning rules and
+ * no new backend API is needed.
+ *
+ * Trust model matches updateTestCaseDefinition: the browser only supplies test
+ * case ids; every id is re-checked against this issue's own coverage set (read
+ * server-side from the trusted invocation context) before anything is created, and
+ * the project is derived from that verified coverage, never from a browser value.
+ * A selection spanning more than one project is rejected -- the ad-hoc endpoint is
+ * single-project by design.
+ */
+export async function startExecution(issueKey, input) {
+  const requestedIds = Array.isArray(input?.testCaseIds) ? input.testCaseIds : [];
+  if (requestedIds.length === 0 || !requestedIds.every((id) => typeof id === "string")) {
+    return { kind: "invalid" };
+  }
+
+  const coverage = await getCoverage(issueKey);
+  if (coverage.kind !== "ok") return coverage;
+
+  const linkedById = new Map(coverage.testCases.map((testCase) => [testCase.id, testCase]));
+  const selected = [];
+  for (const id of requestedIds) {
+    const match = linkedById.get(id);
+    if (!match) return { kind: "invalid" };
+    selected.push(match);
+  }
+
+  const projectKeys = [...new Set(selected.map((testCase) => testCase.projectKey))];
+  if (projectKeys.length !== 1 || !projectKeys[0]) {
+    return { kind: "invalid", reason: "multiProject" };
+  }
+  const projectKey = projectKeys[0];
+
+  const baseUrl = trimTrailingSlash(process.env.TESTRYN_API_BASE_URL);
+  if (!baseUrl) return { kind: "unavailable" };
+  const token = process.env.TESTRYN_API_TOKEN;
+  const name = typeof input?.name === "string" && input.name.trim() ? input.name.trim() : null;
+
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/projects/${encodeURIComponent(projectKey)}/executions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ name, testCaseIds: requestedIds }),
+    });
+    if (response.status === 401 || response.status === 403) return { kind: "unauthorized" };
+    if (response.status === 400 || response.status === 404) return { kind: "invalid" };
+    if (!response.ok) return { kind: "unavailable" };
+    let body;
+    try {
+      body = await response.json();
+    } catch (parseError) {
+      return { kind: "unavailable" };
+    }
+    if (!body || typeof body.id !== "string") return { kind: "unavailable" };
+    return { kind: "ok", executionId: body.id, executionName: body.name ?? null };
+  } catch (networkError) {
+    return { kind: "unavailable" };
+  }
+}
+
 async function sendJson(path, request, onSuccess) {
   const baseUrl = trimTrailingSlash(process.env.TESTRYN_API_BASE_URL);
   if (!baseUrl) return { kind: "unavailable" };

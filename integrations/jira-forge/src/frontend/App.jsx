@@ -4,6 +4,7 @@ import { invoke, router } from "@forge/bridge";
 import { TestCaseCard } from "./TestCaseCard";
 import { TestCaseCreator } from "./TestCaseCreator";
 import { TestCaseLinker } from "./TestCaseLinker";
+import { ExecutionStarter } from "./ExecutionStarter";
 import { orderByAttention, summarizeCoverage } from "./coverageView";
 
 /**
@@ -19,6 +20,7 @@ export function App() {
   const [reloadKey, setReloadKey] = useState(0);
   const [creating, setCreating] = useState(false);
   const [linking, setLinking] = useState(false);
+  const [starting, setStarting] = useState(false);
   const reload = () => setReloadKey((value) => value + 1);
 
   useEffect(() => {
@@ -103,9 +105,12 @@ export function App() {
           <TestCaseCreator onCancel={() => setCreating(false)} onCreated={() => { setCreating(false); reload(); }} />
         ) : linking ? (
           <TestCaseLinker linkedIds={testCases.map((testCase) => testCase.id)} onCancel={() => setLinking(false)} onLinked={() => { setLinking(false); reload(); }} />
+        ) : starting ? (
+          <ExecutionStarter testCases={testCases} appBaseUrl={appBaseUrl} onCancel={() => setStarting(false)} onStarted={() => { setStarting(false); reload(); }} />
         ) : (
           <Inline space="space.100" shouldWrap>
-            <Button appearance="primary" onClick={() => setCreating(true)}>Create test case</Button>
+            <Button appearance="primary" onClick={() => setStarting(true)}>Start execution</Button>
+            <Button appearance="subtle" onClick={() => setCreating(true)}>Create test case</Button>
             <Button appearance="subtle" onClick={() => setLinking(true)}>Link existing test case</Button>
           </Inline>
         )}

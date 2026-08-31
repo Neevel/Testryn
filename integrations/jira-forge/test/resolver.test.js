@@ -5,6 +5,7 @@ import {
   getProjects,
   linkExistingTestCase,
   searchTestCases,
+  startExecution,
   updateTestCaseDefinition,
 } from "../src/resolvers/testrynClient";
 
@@ -16,6 +17,7 @@ jest.mock("../src/resolvers/testrynClient", () => ({
   createLinkedTestCase: jest.fn(),
   searchTestCases: jest.fn(),
   linkExistingTestCase: jest.fn(),
+  startExecution: jest.fn(),
 }));
 
 // The real @forge/resolver package works fine standalone (no Forge runtime needed
@@ -117,6 +119,34 @@ describe("resolvers/index handler", () => {
       context: { extension: { issue: { key: "EVAL-47" } } },
     });
     expect(linkExistingTestCase).not.toHaveBeenCalled();
+    expect(response).toEqual({ kind: "invalid" });
+  });
+
+  test("starting an execution injects the trusted issue key and forwards the selection", async () => {
+    startExecution.mockResolvedValue({ kind: "ok", executionId: "exec-1", executionName: "Iteration 1" });
+    const response = await handler({
+      call: { functionKey: "startExecution", payload: { testCaseIds: ["tc-1", "tc-2"], name: "Smoke" } },
+      context: { extension: { issue: { key: "EVAL-47" } } },
+    });
+    expect(startExecution).toHaveBeenCalledWith("EVAL-47", { testCaseIds: ["tc-1", "tc-2"], name: "Smoke" });
+    expect(response).toEqual({ kind: "ok", executionId: "exec-1", executionName: "Iteration 1" });
+  });
+
+  test("starting an execution is rejected as invalid with no issue context, without calling Testryn", async () => {
+    const response = await handler({
+      call: { functionKey: "startExecution", payload: { testCaseIds: ["tc-1"] } },
+      context: {},
+    });
+    expect(startExecution).not.toHaveBeenCalled();
+    expect(response).toEqual({ kind: "invalid" });
+  });
+
+  test("starting an execution is rejected as invalid when the browser sends no test case ids", async () => {
+    const response = await handler({
+      call: { functionKey: "startExecution", payload: { testCaseIds: [] } },
+      context: { extension: { issue: { key: "EVAL-47" } } },
+    });
+    expect(startExecution).not.toHaveBeenCalled();
     expect(response).toEqual({ kind: "invalid" });
   });
 

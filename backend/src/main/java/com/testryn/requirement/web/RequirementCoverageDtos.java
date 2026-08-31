@@ -113,6 +113,12 @@ public final class RequirementCoverageDtos {
     public record CoverageTestCaseResponse(
             UUID id,
             String humanId,
+            /** The owning project's key. Additive, provider-neutral: a caller
+             * starting an execution needs to know which project each linked test
+             * case belongs to (the ad-hoc execution endpoint is project-scoped),
+             * and {@code project} is already fetched by the coverage query's entity
+             * graph, so this costs no extra round trip. */
+            String projectKey,
             String title,
             TestCaseStatus status,
             TestCasePriority priority,
@@ -133,6 +139,7 @@ public final class RequirementCoverageDtos {
             return new CoverageTestCaseResponse(
                     testCase.getId(),
                     testCase.getHumanId(),
+                    testCase.getProject().getKey(),
                     version == null ? null : version.getTitle(),
                     testCase.getStatus(),
                     testCase.getPriority(),

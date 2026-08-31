@@ -3,6 +3,24 @@
 Strukturierter Produktbacklog. `Now` = aktueller Meilenstein, `Next` = danach
 sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 
+## Now (Execution aus dem Jira-Panel starten — Task 2, siehe PROJECT_STATUS.md)
+
+- [x] Analyse: keine neue Backend-API — bestehender provider-neutraler
+      `POST /api/v1/projects/{projectKey}/executions` (Ad-hoc, ADR-0003-Snapshot)
+      reicht fachlich aus
+- [x] Additive `projectKey` auf `CoverageTestCaseResponse` (kein Domain-/
+      Migrationsschritt, `project` bereits im Entity-Graph; N+1-Test unverändert grün)
+- [x] Forge-Resolver `startExecution`: Issue-Key aus dem Invocation Context,
+      jede Testfall-ID gegen die Coverage dieses Issues geprüft, projektübergreifende
+      Auswahl abgelehnt, Projekt aus der verifizierten Coverage abgeleitet
+- [x] `ExecutionStarter.jsx`: Auswahl je Projekt, optionaler Name, In-Flight-Guard
+      gegen Doppelklick, Erfolg/Validierung/Unauthorized/Ausfall verständlich,
+      Link auf die neue Execution nach Erfolg; `groupByProject` als reine Datenhilfe
+- [x] ADR 0016 Erweiterungsabschnitt, `docs/jira-forge-integration.md` aktualisiert
+- [x] Forge 79/79 Jest grün, `forge lint` ohne Befund; Backend-Coverage-Tests
+      isoliert grün; Frontend-Build/-Tests unverändert grün
+- [ ] `forge deploy`/`install` und visuelle Browser-Abnahme (eigener Task)
+
 ## Now (Vorhandenen Testfall aus dem Jira-Panel verknüpfen — Task 1, siehe PROJECT_STATUS.md)
 
 - [x] Forge-Resolver `searchTestCases` (paginierter `GET /projects/{key}/test-cases`,
@@ -119,11 +137,11 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
   die Step-Result-API ist dafür vorbereitet (dieselbe `PATCH .../step-results`, die
   auch der Runner nutzt), aber kein Adapter dafür in diesem Block gebaut
   (Abschnitt 21/54).
-- **Weitere Forge-Panel-Schreibaktionen** (Start Execution) — das Erstellen und
-  automatische Verknüpfen neuer Testfälle, das versionssichere Bearbeiten (ADR 0016)
-  und das Verknüpfen bereits vorhandener Testfälle (Task 1) sind umgesetzt; „Start
-  Execution aus dem Panel" ist der nächste eigenständige Block (Task 2). Kein
-  AI-„Generate Tests"-Button — separater, noch nicht begonnener Block.
+- **Weitere Forge-Panel-Schreibaktionen** — Neuanlage + automatisches Verknüpfen,
+  versionssicheres Bearbeiten (ADR 0016), Verknüpfen vorhandener Testfälle (Task 1)
+  und Execution starten (Task 2) sind umgesetzt. Kein AI-„Generate Tests"-Button —
+  separater, noch nicht begonnener Block. Optionale Anschlüsse: Ergebnisse direkt
+  im Panel erfassen, Execution aus einem bestehenden Test Plan statt ad-hoc.
 - **Weitere Report-Importer** (Playwright, Cypress, Allure, NUnit, pytest) — dieselbe
   `ResultBatchReader`-Schnittstelle wie beim jetzt implementierten JUnit-XML-Adapter,
   jeweils ein kleinerer, eigenständiger Block.

@@ -7,6 +7,47 @@ Stand: 2026-08-31
 
 ## Aktueller Meilenstein
 
+**Execution direkt aus dem Jira-Panel starten: implementiert (Task 2).** Im
+befüllten Panel öffnet „Start execution" einen Picker: die zum Issue verknüpften
+Testfälle, nach Projekt gruppiert (Testryns Ad-hoc-Execution-Endpoint ist
+einprojektig — ein Issue mit projektübergreifenden Links startet je Projekt
+separat), jeweils vorausgewählt, plus optionaler Execution-Name. Ein Klick startet;
+der Button ist während des Requests deaktiviert (In-Flight-Guard), ein Doppelklick
+kann keine zweite Execution anlegen. Bei Erfolg zeigt das Panel einen
+„Open execution in Testryn"-Link (`<app-base>/executions/<id>`) und lädt die
+Coverage neu.
+
+**Analyseentscheidung**: keine neue Backend-API. Der bestehende, provider-neutrale
+`POST /api/v1/projects/{projectKey}/executions` (Ad-hoc-Execution) deckt den Fall
+fachlich vollständig ab — er erzeugt bereits einen unveränderlichen Snapshot, der
+pro Testfall auf dessen aktuelle `TestCaseVersion` gepinnt ist (ADR 0003). Einzige
+Backend-Änderung: `CoverageTestCaseResponse` trägt zusätzlich `projectKey`
+(additiv, provider-neutral, kein Domain-/Migrationsschritt — `project` wird vom
+Entity-Graph der Coverage-Abfrage ohnehin geladen; der N+1-Regressionstest blieb
+unverändert grün). Der Ad-hoc-Endpoint ist projekt-scoped, daher braucht der
+Resolver den Key, um nicht pro Testfall einen Extra-Request zu stellen
+(Abschnitt 22).
+
+**Vertrauensmodell** wie bei `updateTestCaseDefinition`: der Browser übergibt nur
+Testfall-IDs; der Resolver liest den Issue-Key aus dem Invocation Context, ruft die
+Coverage erneut ab und lehnt jede nicht enthaltene ID sowie jede
+projektübergreifende Auswahl ab, bevor etwas erzeugt wird. Jira bleibt read-only,
+der Service-Token bleibt im Resolver (`testryn:write` genügt), keine Jira-REST-
+Scopes, keine Tokens/Authorization-Header/rohen Backend-Fehler an den Browser
+(jede Fehlerantwort ist eines von `invalid`/`unauthorized`/`unavailable`).
+
+Neuer Resolver `startExecution`, neue Komponente `ExecutionStarter.jsx`, reine
+Datenhilfe `groupByProject` in `coverageView.js`. ADR 0016 um einen weiteren
+Erweiterungsabschnitt ergänzt, `docs/jira-forge-integration.md` aktualisiert.
+Verifikation: **Forge 79/79 Jest grün** (64 vorher + 15 neu), `forge lint` ohne
+Befund. Backend `RequirementCoverageTest` 17/17 + `TestCaseDefinitionUpdateTest`
+2/2 isoliert grün; Frontend `npm run build` + 7/7 grün (nicht betroffen). Voller
+Backend-Lauf 162/163 — der eine Fehlschlag ist erneut die dokumentierte
+`System.nanoTime() % 100000`-Test-Key-Kollision (diesmal im Setup von
+`BulkResultUpdateTest`, isoliert 16/16 grün; in diesem Task kein Execution-Modul-
+Code angefasst). Task 1 unverändert grün. `forge deploy`/`install` und die visuelle
+Jira-Abnahme stehen weiter aus (eigener Task).
+
 **Vorhandenen Testfall aus dem Jira-Panel verknüpfen: implementiert (Forge-only,
 Task 1).** Neben „Create test case" bietet das Panel jetzt „Link existing test
 case": Projekt wählen, Testfälle des Projekts nach Human-ID/Titel durchsuchen

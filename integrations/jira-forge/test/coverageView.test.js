@@ -1,6 +1,7 @@
 import {
   executorLabel,
   getFailedOrBlockedSteps,
+  groupByProject,
   isAttentionStatus,
   markLinkable,
   orderByAttention,
@@ -178,6 +179,36 @@ describe("orderByAttention / rankOf", () => {
     const passedRank = rankOf(testCase("x", { status: "PASSED" }));
     expect(notRunRank).toBeLessThan(noExecutionRank);
     expect(noExecutionRank).toBeLessThan(passedRank);
+  });
+});
+
+describe("groupByProject", () => {
+  test("buckets linked test cases by project key, preserving first-seen order", () => {
+    const groups = groupByProject([
+      { id: "a", projectKey: "EVAL" },
+      { id: "b", projectKey: "CORE" },
+      { id: "c", projectKey: "EVAL" },
+    ]);
+    expect([...groups.keys()]).toEqual(["EVAL", "CORE"]);
+    expect(groups.get("EVAL").map((tc) => tc.id)).toEqual(["a", "c"]);
+    expect(groups.get("CORE").map((tc) => tc.id)).toEqual(["b"]);
+  });
+
+  test("a single project yields one group", () => {
+    const groups = groupByProject([{ id: "a", projectKey: "EVAL" }, { id: "b", projectKey: "EVAL" }]);
+    expect(groups.size).toBe(1);
+    expect(groups.get("EVAL")).toHaveLength(2);
+  });
+
+  test("a test case without a projectKey is bucketed under an empty string, not dropped", () => {
+    const groups = groupByProject([{ id: "a" }, { id: "b", projectKey: "EVAL" }]);
+    expect(groups.get("")).toEqual([{ id: "a" }]);
+    expect(groups.get("EVAL")).toEqual([{ id: "b", projectKey: "EVAL" }]);
+  });
+
+  test("null/empty input yields an empty map", () => {
+    expect(groupByProject(null).size).toBe(0);
+    expect(groupByProject([]).size).toBe(0);
   });
 });
 

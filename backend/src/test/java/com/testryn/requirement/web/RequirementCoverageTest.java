@@ -88,6 +88,7 @@ class RequirementCoverageTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.totalCount").value(1))
                 .andExpect(jsonPath("$.testCases", org.hamcrest.Matchers.hasSize(1)))
                 .andExpect(jsonPath("$.testCases[0].id").value(testCaseId))
+                .andExpect(jsonPath("$.testCases[0].projectKey").value(projectKey))
                 .andExpect(jsonPath("$.testCases[0].title").value("Successful login"))
                 .andExpect(jsonPath("$.testCases[0].steps[0].action").value("Enter valid username"))
                 .andExpect(jsonPath("$.testCases[0].steps[0].expectedResult").value("Username is accepted"));

@@ -76,3 +76,30 @@ aus einem Browser-Wert. Der Forge-Service-Token nutzt seinen schon vorhandenen
 `testryn:write`-Scope; keine Scope-Änderung, keine Jira-REST-Scopes. Bereits
 verknüpfte Testfälle zeigt das Panel als „Linked" und bietet sie nicht erneut an --
 die eigentliche Durchsetzung bleibt der `409` aus Testryn.
+
+## Erweiterung: Execution aus dem Jira-Panel starten
+
+Das Panel kann für die zu einem Issue verknüpften Testfälle eine neue Testryn-
+Execution starten. Bewusst **keine neue Backend-API**: der bestehende, provider-
+neutrale Ad-hoc-Endpoint `POST /api/v1/projects/{projectKey}/executions` deckt den
+Fall fachlich vollständig ab -- er erzeugt bereits einen unveränderlichen Snapshot,
+der pro Testfall auf dessen aktuelle `TestCaseVersion` gepinnt ist (ADR 0003). Ein
+Forge-Sonderweg, der Snapshot- oder Versionierungsregeln umginge, entsteht damit
+nicht.
+
+Einzige Backend-Änderung: `CoverageTestCaseResponse` trägt zusätzlich `projectKey`
+(additiv, provider-neutral, kein Domain-/Migrationsschritt -- `project` wird vom
+Entity-Graph der Coverage-Abfrage ohnehin geladen). Der Ad-hoc-Endpoint ist
+projekt-scoped; ohne den Key wüsste der Resolver nicht, an welches Projekt er die
+Anfrage richten muss, und müsste pro Testfall einen zusätzlichen Request stellen
+(Verstoß gegen Abschnitt 22).
+
+Vertrauensmodell wie bei `updateTestCaseDefinition`: der Browser übergibt nur
+Testfall-IDs. Der Resolver liest den Issue-Key aus dem Invocation Context, ruft
+die Coverage dieses Issues erneut ab und lehnt jede nicht enthaltene ID ab, bevor
+etwas erzeugt wird. Das Projekt wird aus dieser verifizierten Coverage abgeleitet,
+nie aus einem Browser-Wert; eine Auswahl über mehr als ein Projekt wird abgelehnt
+(der Ad-hoc-Endpoint ist einprojektig). Jira bleibt read-only, der Service-Token
+bleibt im Resolver, sein vorhandener `testryn:write`-Scope genügt. Nach Erfolg
+bietet das Panel einen Link auf `<app-base>/executions/<id>` an. Mehrfachklicks
+verhindert der Button über einen In-Flight-Guard.
