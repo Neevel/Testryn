@@ -3,6 +3,30 @@
 Strukturierter Produktbacklog. `Now` = aktueller Meilenstein, `Next` = danach
 sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 
+## Now (Forge-Deployment + visuelle Live-Abnahme — Task 3, siehe PROJECT_STATUS.md)
+
+- [x] Vor-Deployment: Forge-Jest 79/79, `forge lint` ohne Befund, Frontend-Build +
+      7/7, Backend `RequirementCoverageTest`/`TestCaseDefinitionUpdateTest` grün
+- [x] Bestehender `cloudflared`-Quick-Tunnel weiter aktiv, erreicht das abgesicherte
+      Backend (`401` ohne Token), stimmt mit Manifest-Egress + `TESTRYN_API_BASE_URL`
+      überein — keine neue Tunnel-URL, keine Manifest-Änderung, kein `MAJOR_VERSION_RULE`
+- [x] `TESTRYN_API_TOKEN` als verschlüsselte Forge-Variable vorhanden (Wert nie
+      ausgegeben); `testryn:write` durch frühere verifizierte Schreibpfad-Deploys belegt
+- [x] `forge deploy -e development` → App-Version **5.1.0**; `forge install list`
+      zeigt `ki-meets-testautomation.atlassian.net` als **`Up-to-date`** (kein
+      `--upgrade` nötig, keine neuen Berechtigungen/Egress)
+- [x] Resolver-Ziel-Endpoints über den öffentlichen Tunnel erreichbar, `401` ohne
+      Token (Auth erzwungen, Routing intakt) — **nicht** visuell
+- [ ] **Weiterhin offen — visuelle Live-Abnahme im Jira-Browser** (kein
+      angemeldeter Atlassian-Browser in dieser Session): Panel-Laden auf EVAL-47,
+      Light/Dark, normales/schmales Layout, Accordions + Step-Tabellen; „Link
+      existing test case" (Projektwahl, Suche/Pagination, „Linked", echtes
+      Verknüpfen, Coverage-Reload, kein Duplikat, Jira unverändert); „Start
+      execution" (Projektgruppierung, Vorauswahl/Name, projektübergreifende Auswahl
+      verhindert, Doppelklick-Schutz, Start, Erfolgsmeldung mit Name + Link,
+      gepinnte Versionen in Testryn, Coverage-Reload); Empty State an einem
+      unverlinkten Issue; Fehlerzustände (Testryn-Downtime, Unauthorized)
+
 ## Now (Execution aus dem Jira-Panel starten — Task 2, siehe PROJECT_STATUS.md)
 
 - [x] Analyse: keine neue Backend-API — bestehender provider-neutraler
@@ -19,7 +43,8 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 - [x] ADR 0016 Erweiterungsabschnitt, `docs/jira-forge-integration.md` aktualisiert
 - [x] Forge 79/79 Jest grün, `forge lint` ohne Befund; Backend-Coverage-Tests
       isoliert grün; Frontend-Build/-Tests unverändert grün
-- [ ] `forge deploy`/`install` und visuelle Browser-Abnahme (eigener Task)
+- [x] `forge deploy -e development` (App-Version 5.1.0), Installation `Up-to-date`
+- [ ] visuelle Browser-Abnahme des „Start execution"-Flows (Task 3, weiterhin offen)
 
 ## Now (Vorhandenen Testfall aus dem Jira-Panel verknüpfen — Task 1, siehe PROJECT_STATUS.md)
 
@@ -34,7 +59,8 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
       „Linked", `markLinkable` als reine, getestete Datenhilfe
 - [x] ADR 0016 Erweiterungsabschnitt, `docs/jira-forge-integration.md` aktualisiert
 - [x] Forge 64/64 Jest grün, `forge lint` ohne Befund
-- [ ] `forge deploy`/`install` und visuelle Browser-Abnahme (zusammen mit Task 3)
+- [x] `forge deploy -e development` (App-Version 5.1.0), Installation `Up-to-date`
+- [ ] visuelle Browser-Abnahme des „Link existing test case"-Flows (Task 3, weiterhin offen)
 
 ## Now (JUnit XML Import & CI Adapter, siehe PROJECT_STATUS.md)
 

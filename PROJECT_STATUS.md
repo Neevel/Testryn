@@ -7,6 +7,62 @@ Stand: 2026-08-31
 
 ## Aktueller Meilenstein
 
+**Task 3 (Forge-Deployment + visuelle Live-Abnahme): Deployment erledigt, visuelle
+Abnahme weiterhin offen.**
+
+Erledigt in dieser Session:
+
+- **Vor-Deployment-Checks grün**: Forge-Jest 79/79, `forge lint` ohne Befund,
+  Frontend `npm run build` + 7/7, Backend `RequirementCoverageTest` 17/17 und
+  `TestCaseDefinitionUpdateTest` 2/2 (die beiden, die die additive
+  `projectKey`-DTO-Änderung abdecken). Ein flakiger `409` trat im `@BeforeEach`
+  von `RequirementWorkflowTest` beim kombinierten Lauf auf (bekannte, seit Langem
+  dokumentierte `System.nanoTime() % 100000`-Projektschlüssel-Kollision); isoliert
+  6/6 grün. Kein Branch-Code betroffen.
+- **Tunnel unverändert**: der bestehende `cloudflared`-Quick-Tunnel
+  (`…trycloudflare.com`, Adresse nicht in Klartext hier wiederholt) läuft weiter,
+  erreicht das abgesicherte Backend (`401` ohne Token) und stimmt mit
+  `permissions.external.fetch.backend` sowie `TESTRYN_API_BASE_URL` (Forge
+  `development`) überein. Keine neue Tunnel-URL, **keine Manifest-Änderung**, kein
+  `MAJOR_VERSION_RULE`.
+- **Forge-Env**: `TESTRYN_API_TOKEN` ist als verschlüsselte Variable vorhanden
+  (`forge variables list` zeigt `✔ / ****`; Wert nie ausgegeben). Der
+  `testryn:write`-Scope ist durch frühere verifizierte Schreibpfad-Deployments
+  belegt (v3.7.0 Definition-Editing, v3.8.0 Create+Link) und nicht ohne
+  Admin-Token erneut introspektierbar.
+- **Deployment**: `forge deploy -e development` erfolgreich, **App-Version 5.1.0**;
+  `forge lint` im Zuge des Deploys ohne Befund. `forge install list`:
+  Installation auf `ki-meets-testautomation.atlassian.net` (Environment
+  `development`, App-Version `5`) ist **`Up-to-date`**. Kein
+  `forge install --upgrade` nötig — keine neuen Berechtigungen/Egress-Adressen.
+- **Endpoint-Erreichbarkeit über den öffentlichen Tunnel geprüft** (nicht visuell):
+  `GET /requirement-links/coverage`, `GET /projects/{key}/test-cases`,
+  `GET /integrations/jira/connection`, `GET /projects` und
+  `POST /projects/{key}/executions` sind über die von Forge Cloud genutzte
+  öffentliche Tunnel-URL erreichbar und antworten korrekt mit `401` ohne Token
+  (Auth erzwungen, Routing intakt).
+
+**Weiterhin offen — visuelle Live-Abnahme im Jira-Browser** (in dieser Session
+nicht durchführbar: kein angemeldeter Atlassian-Browser verbunden — weder der
+isolierte Session-Browser noch „Claude in Chrome"):
+
+- EVAL-47 / Issue mit Coverage: Panel-Laden, Testfälle/Schritte/letzte Ergebnisse,
+  Light + Dark Mode, normales + schmales Layout, Accordions und Step-Tabellen.
+- „Link existing test case": Projektauswahl, Suche/Pagination/Total Count,
+  „Linked"-Markierung, echtes Verknüpfen, Coverage-Reload ohne Seitenwechsel,
+  kein Duplikat bei erneutem Verknüpfen, Jira unverändert.
+- „Start execution": Gruppierung nach Projekt, Vorauswahl + optionaler Name,
+  Verhinderung projektübergreifender Auswahl, Doppelklick-Schutz, erfolgreicher
+  Start, Erfolgsmeldung mit Name + Link, „Open execution in Testryn", Prüfung der
+  gepinnten Versionen in Testryn, anschließender Coverage-Reload.
+- Empty State an einem unverlinkten Issue: „No Testryn test cases linked",
+  „Link existing test case" verfügbar, „Start execution" **nicht** angeboten.
+- Fehlerzustände: kontrollierte Testryn-Downtime → „Testryn is currently
+  unavailable" ohne technische Details, danach Wiederherstellung; Unauthorized mit
+  temporärem ungültigem Token. Bewusst nicht angefasst, da nur gepaart mit der
+  visuellen Prüfung aussagekräftig und ein Token-/Backend-Eingriff ohne visuelle
+  Bestätigung der Wiederherstellung riskant wäre.
+
 **Execution direkt aus dem Jira-Panel starten: implementiert (Task 2).** Im
 befüllten Panel öffnet „Start execution" einen Picker: die zum Issue verknüpften
 Testfälle, nach Projekt gruppiert (Testryns Ad-hoc-Execution-Endpoint ist
