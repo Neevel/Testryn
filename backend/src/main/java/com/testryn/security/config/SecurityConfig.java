@@ -29,7 +29,13 @@ public class SecurityConfig {
      * information by calling the (protected) endpoints' 401 responses' `path`
      * anyway; the OpenAPI document itself contains no data, only shapes. */
     private static final String[] PUBLIC_PATHS = {
-            "/v3/api-docs", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/error"
+            "/v3/api-docs", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/error",
+            // Jira OAuth 2.0 redirect target (ADR 0018): an Atlassian browser redirect
+            // cannot carry a Testryn service token. Deliberately outside /api/**;
+            // protected instead by the single-use, TTL-bounded `state` verified in
+            // JiraOAuthService. It accepts no client-supplied redirect and only ever
+            // renders a small static status page.
+            "/integrations/jira/oauth/callback"
     };
 
     @Bean
@@ -51,6 +57,11 @@ public class SecurityConfig {
                         // matched before the general /api/** rules below so a plain
                         // write-scoped token can never mint or revoke tokens.
                         .requestMatchers("/api/v1/service-tokens/**").hasAuthority("SCOPE_ADMIN")
+                        // Starting an OAuth flow or disconnecting swaps an
+                        // instance-wide Jira credential -- admin-grade, like token
+                        // management (ADR 0018). Matched before the generic /api/**
+                        // rules so a plain write token cannot trigger it.
+                        .requestMatchers("/api/v1/integrations/jira/oauth/**").hasAuthority("SCOPE_ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/**").hasAuthority("SCOPE_READ")
                         .requestMatchers(HttpMethod.HEAD, "/api/**").hasAuthority("SCOPE_READ")
                         .requestMatchers("/api/**").hasAuthority("SCOPE_WRITE")

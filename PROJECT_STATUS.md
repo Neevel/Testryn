@@ -7,6 +7,221 @@ Stand: 2026-08-31
 
 ## Aktueller Meilenstein
 
+**Jira Cloud OAuth 2.0 (3LO): implementiert (Task 4, ADR 0018).** OAUTH2 ist jetzt
+eine zweite, gleichwertige Auth-Art derselben einen Jira-Verbindung; **API_TOKEN
+bleibt Default und vollständig kompatibel** (der OAuth-Pfad liest die Token-Tabelle
+nur im OAUTH2-Modus, `TESTRYN_JIRA_API_TOKEN` funktioniert unverändert).
+
+**Architekturentscheidung**: keine offene Grundsatz- oder Benutzerentscheidung —
+für jede der 12 Analysefragen existiert ein aus ADR 0005/0007/0012/0017 abgeleiteter
+Default. Umgesetzt ohne Stopp. Kern:
+
+- `auth_type` wandert aus reiner Env-Konfiguration in `jira_connection_configuration`
+  (Spalte, Default `'API_TOKEN'`), umschaltbar über das bestehende
+  `PUT /api/v1/integrations/jira/connection` (`authType` optional — omit = unverändert).
+- OAuth-Code ausschließlich unter `com.testryn.integration.jira.oauth`. `RequirementProvider`,
+  `RequirementLink`, das `requirement`-Modul und das Core-Domain-Modell unverändert
+  und provider-neutral. `JiraIssueClient` bekommt einen zweiten Auth-Zweig, sonst nichts.
+- Der Admin startet den Flow über die Settings-UI mit seinem `testryn:admin`-Service-Token
+  — Human-User-Auth bleibt separat (ADR 0012). `POST …/oauth/authorize-url` und
+  `POST …/oauth/disconnect` erfordern `testryn:admin` (eigener SecurityConfig-Matcher).
+- `GET /integrations/jira/oauth/callback` liegt **außerhalb `/api/**`** (ein
+  Atlassian-Browser-Redirect kann keinen Service-Token tragen), permitAll, geschützt
+  ausschließlich über `state`: 256 bit, nur als SHA-256 gespeichert, TTL 10 min,
+  einmalig (atomarer `@Modifying`-Delete, betroffene Zeilen == 1) → replay-sicher.
+  Keine Redirect-URL wird je vom Client übernommen; `redirect_uri` kommt ausnahmslos
+  aus `TESTRYN_JIRA_OAUTH_REDIRECT_URI`. Der Callback rendert eine kleine statische
+  HTML-Statusseite, keine Weiterleitung.
+- Access-/Refresh-Token: `jira_oauth_token` (eine Zeile, `id='default'`),
+  **AES-256-GCM-verschlüsselt** (`SecretCipher`, `javax.crypto`, 12-Byte-IV je
+  Verschlüsselung, 128-bit-Tag, `base64(iv||ct||tag)`). Schlüssel nur aus
+  `TESTRYN_JIRA_OAUTH_ENCRYPTION_KEY` (Base64 von 32 Bytes). Keine Klartext-Spalte.
+  Fehlt der Schlüssel: Start unbeeinträchtigt, nur OAuth-Operationen scheitern mit
+  klarer Meldung.
+- **Refresh atomar & nebenläufigkeitssicher**: `currentAccessToken()` ist
+  `@Transactional(REQUIRES_NEW, noRollbackFor = UpstreamServiceException.class)` und
+  lädt die Token-Zeile per `@Lock(PESSIMISTIC_WRITE)` (`SELECT … FOR UPDATE`).
+  Nebenläufige Aufrufer serialisieren; der zweite sieht danach den bereits rotierten
+  Token und refresht nicht erneut (per 2-Thread-Test verifiziert: `refresh` genau
+  1×). REQUIRES_NEW verhindert, dass ein Enrichment-Fehler die umgebende Transaktion
+  (z. B. Requirement-Link-Anlage) vergiftet; `noRollbackFor` sorgt dafür, dass beim
+  endgültig toten Refresh-Token die Löschung der Zeile committet. Rotation: neuer
+  Access- UND Refresh-Token verschlüsselt zurückgeschrieben, alter Refresh-Token
+  ersetzt. Atlassians 10-Minuten-Reuse-Leeway deckt den Cross-Instance-Fall.
+- **Site-Bestimmung** über `accessible-resources`: Testryn wählt die Site, deren
+  Host der bereits konfigurierten `base_url` entspricht (kein UI-Auswahlschritt).
+  Kein Treffer → `SITE_MISMATCH`. HTTPS + `*.atlassian.net` bleibt erzwungen.
+- **Fehlerzustände** unterscheidbar in `GET …/connection`: `oauthConfigured`,
+  `oauthConnected`, `oauthSiteUrl`, `reauthorizationRequired`. Refresh-`4xx`
+  (`invalid_grant`) → tote Zeile gelöscht + „re-authorize"; `5xx`/Netz → Zeile
+  bleibt, „not reachable".
+- **Disconnect** (`POST …/oauth/disconnect`, admin): Best-Effort-Revoke bei
+  `auth.atlassian.com/oauth/revoke`, dann Löschen der `jira_oauth_token`-Zeile.
+  **Niemals** Test Cases, Requirement Links, Executions oder Jira-Issues (per Test
+  mit echtem Requirement Link verifiziert).
+- Outbound-HTTP (`JiraOAuthClient`, `JiraIssueClient`-OAUTH2-Zweig) weiterhin
+  `RestClient` + `SimpleClientHttpRequestFactory`, nie JDK-`HttpClient` (AGENTS.md §6a).
+
+**Benötigte Atlassian-Scopes**: `read:jira-work` + `offline_access` (minimal — der
+Verbindungstest nutzt `accessible-resources`, braucht daher kein `read:jira-user`).
+
+**Neue Environment Variables**: `TESTRYN_JIRA_OAUTH_CLIENT_ID`,
+`TESTRYN_JIRA_OAUTH_CLIENT_SECRET`, `TESTRYN_JIRA_OAUTH_REDIRECT_URI`,
+`TESTRYN_JIRA_OAUTH_ENCRYPTION_KEY` (alle optional; nur im OAUTH2-Modus nötig; in
+`application.yml` + `docker-compose.yml` nur als Namen/Platzhalter).
+
+**DB (Migration `0010-jira-oauth.sql`, additiv)**:
+`jira_connection_configuration.auth_type VARCHAR(20) NOT NULL DEFAULT 'API_TOKEN'`;
+neue Tabellen `jira_oauth_state` (state_hash, created_at, expires_at) und
+`jira_oauth_token` (id, access/refresh_token_ciphertext, access_token_expires_at,
+cloud_id, site_url, scopes, obtained_at, updated_at). Bestandsinstallationen laufen
+ohne Änderung im API-Token-Modus weiter.
+
+**API/UI**: neue Endpunkte `POST /api/v1/integrations/jira/oauth/authorize-url`
+(admin), `GET /integrations/jira/oauth/callback` (public), `POST
+/api/v1/integrations/jira/oauth/disconnect` (admin); `PUT …/connection` akzeptiert
+optionales `authType`; `GET …/connection` liefert zusätzlich die vier
+OAuth-Statusfelder (keine Secrets). Settings-UI: Auth-type-Auswahl (API token /
+OAuth 2.0), OAuth-Client-/Verbindungsstatus-Badges, „Connect with Atlassian" /
+„Disconnect" — zeigt nur nicht geheime Zustände.
+
+**Tests**: **Backend 212/212 grün** (163 vorher + 49 neu: `SecretCipherTest` 6,
+`JiraOAuthStateTest` 3, `JiraOAuthClientTest` 6, `JiraIssueClientOAuthTest` 4,
+`JiraOAuthServiceIntegrationTest` 17, `JiraOAuthEndpointsTest` 9,
+`JiraOAuthMissingKeyTest` 3, `JiraOAuthSecretLoggingTest` 1). Kein Flake in diesem
+Lauf (die bekannte `System.nanoTime() % 100000`-Test-Key-Kollision trat nicht auf;
+bleibt ein separater Task). Frontend `npm run build` + 7/7 grün. **Forge 79/79
+Jest grün** und `forge lint` ohne Befund (Forge fachlich unverändert).
+`git diff --check` sauber, Secret-Scan ohne echten Fund.
+
+**Manuell mit echtem Atlassian-OAuth-Client noch nötig** (kein Live-Deployment in
+diesem Block): OAuth-2.0-(3LO)-App in der Developer Console anlegen (Scopes +
+Callback-URL), die vier `TESTRYN_JIRA_OAUTH_*`-Variablen setzen, in den Settings auf
+OAUTH2 schalten und „Connect" durchführen, dann End-to-End gegen die echte Site
+verifizieren (Verbindungstest, Issue-Lookup, Enrichment, Ablauf/Refresh, Disconnect).
+
+**Task 3 (Forge-Deployment + visuelle Live-Abnahme): Deployment erledigt, visuelle
+Abnahme weiterhin offen.**
+
+Erledigt in dieser Session:
+
+- **Vor-Deployment-Checks grün**: Forge-Jest 79/79, `forge lint` ohne Befund,
+  Frontend `npm run build` + 7/7, Backend `RequirementCoverageTest` 17/17 und
+  `TestCaseDefinitionUpdateTest` 2/2 (die beiden, die die additive
+  `projectKey`-DTO-Änderung abdecken). Ein flakiger `409` trat im `@BeforeEach`
+  von `RequirementWorkflowTest` beim kombinierten Lauf auf (bekannte, seit Langem
+  dokumentierte `System.nanoTime() % 100000`-Projektschlüssel-Kollision); isoliert
+  6/6 grün. Kein Branch-Code betroffen.
+- **Tunnel unverändert**: der bestehende `cloudflared`-Quick-Tunnel
+  (`…trycloudflare.com`, Adresse nicht in Klartext hier wiederholt) läuft weiter,
+  erreicht das abgesicherte Backend (`401` ohne Token) und stimmt mit
+  `permissions.external.fetch.backend` sowie `TESTRYN_API_BASE_URL` (Forge
+  `development`) überein. Keine neue Tunnel-URL, **keine Manifest-Änderung**, kein
+  `MAJOR_VERSION_RULE`.
+- **Forge-Env**: `TESTRYN_API_TOKEN` ist als verschlüsselte Variable vorhanden
+  (`forge variables list` zeigt `✔ / ****`; Wert nie ausgegeben). Der
+  `testryn:write`-Scope ist durch frühere verifizierte Schreibpfad-Deployments
+  belegt (v3.7.0 Definition-Editing, v3.8.0 Create+Link) und nicht ohne
+  Admin-Token erneut introspektierbar.
+- **Deployment**: `forge deploy -e development` erfolgreich, **App-Version 5.1.0**;
+  `forge lint` im Zuge des Deploys ohne Befund. `forge install list`:
+  Installation auf `ki-meets-testautomation.atlassian.net` (Environment
+  `development`, App-Version `5`) ist **`Up-to-date`**. Kein
+  `forge install --upgrade` nötig — keine neuen Berechtigungen/Egress-Adressen.
+- **Endpoint-Erreichbarkeit über den öffentlichen Tunnel geprüft** (nicht visuell):
+  `GET /requirement-links/coverage`, `GET /projects/{key}/test-cases`,
+  `GET /integrations/jira/connection`, `GET /projects` und
+  `POST /projects/{key}/executions` sind über die von Forge Cloud genutzte
+  öffentliche Tunnel-URL erreichbar und antworten korrekt mit `401` ohne Token
+  (Auth erzwungen, Routing intakt).
+
+**Weiterhin offen — visuelle Live-Abnahme im Jira-Browser** (in dieser Session
+nicht durchführbar: kein angemeldeter Atlassian-Browser verbunden — weder der
+isolierte Session-Browser noch „Claude in Chrome"):
+
+- EVAL-47 / Issue mit Coverage: Panel-Laden, Testfälle/Schritte/letzte Ergebnisse,
+  Light + Dark Mode, normales + schmales Layout, Accordions und Step-Tabellen.
+- „Link existing test case": Projektauswahl, Suche/Pagination/Total Count,
+  „Linked"-Markierung, echtes Verknüpfen, Coverage-Reload ohne Seitenwechsel,
+  kein Duplikat bei erneutem Verknüpfen, Jira unverändert.
+- „Start execution": Gruppierung nach Projekt, Vorauswahl + optionaler Name,
+  Verhinderung projektübergreifender Auswahl, Doppelklick-Schutz, erfolgreicher
+  Start, Erfolgsmeldung mit Name + Link, „Open execution in Testryn", Prüfung der
+  gepinnten Versionen in Testryn, anschließender Coverage-Reload.
+- Empty State an einem unverlinkten Issue: „No Testryn test cases linked",
+  „Link existing test case" verfügbar, „Start execution" **nicht** angeboten.
+- Fehlerzustände: kontrollierte Testryn-Downtime → „Testryn is currently
+  unavailable" ohne technische Details, danach Wiederherstellung; Unauthorized mit
+  temporärem ungültigem Token. Bewusst nicht angefasst, da nur gepaart mit der
+  visuellen Prüfung aussagekräftig und ein Token-/Backend-Eingriff ohne visuelle
+  Bestätigung der Wiederherstellung riskant wäre.
+
+**Execution direkt aus dem Jira-Panel starten: implementiert (Task 2).** Im
+befüllten Panel öffnet „Start execution" einen Picker: die zum Issue verknüpften
+Testfälle, nach Projekt gruppiert (Testryns Ad-hoc-Execution-Endpoint ist
+einprojektig — ein Issue mit projektübergreifenden Links startet je Projekt
+separat), jeweils vorausgewählt, plus optionaler Execution-Name. Ein Klick startet;
+der Button ist während des Requests deaktiviert (In-Flight-Guard), ein Doppelklick
+kann keine zweite Execution anlegen. Bei Erfolg zeigt das Panel einen
+„Open execution in Testryn"-Link (`<app-base>/executions/<id>`) und lädt die
+Coverage neu.
+
+**Analyseentscheidung**: keine neue Backend-API. Der bestehende, provider-neutrale
+`POST /api/v1/projects/{projectKey}/executions` (Ad-hoc-Execution) deckt den Fall
+fachlich vollständig ab — er erzeugt bereits einen unveränderlichen Snapshot, der
+pro Testfall auf dessen aktuelle `TestCaseVersion` gepinnt ist (ADR 0003). Einzige
+Backend-Änderung: `CoverageTestCaseResponse` trägt zusätzlich `projectKey`
+(additiv, provider-neutral, kein Domain-/Migrationsschritt — `project` wird vom
+Entity-Graph der Coverage-Abfrage ohnehin geladen; der N+1-Regressionstest blieb
+unverändert grün). Der Ad-hoc-Endpoint ist projekt-scoped, daher braucht der
+Resolver den Key, um nicht pro Testfall einen Extra-Request zu stellen
+(Abschnitt 22).
+
+**Vertrauensmodell** wie bei `updateTestCaseDefinition`: der Browser übergibt nur
+Testfall-IDs; der Resolver liest den Issue-Key aus dem Invocation Context, ruft die
+Coverage erneut ab und lehnt jede nicht enthaltene ID sowie jede
+projektübergreifende Auswahl ab, bevor etwas erzeugt wird. Jira bleibt read-only,
+der Service-Token bleibt im Resolver (`testryn:write` genügt), keine Jira-REST-
+Scopes, keine Tokens/Authorization-Header/rohen Backend-Fehler an den Browser
+(jede Fehlerantwort ist eines von `invalid`/`unauthorized`/`unavailable`).
+
+Neuer Resolver `startExecution`, neue Komponente `ExecutionStarter.jsx`, reine
+Datenhilfe `groupByProject` in `coverageView.js`. ADR 0016 um einen weiteren
+Erweiterungsabschnitt ergänzt, `docs/jira-forge-integration.md` aktualisiert.
+Verifikation: **Forge 79/79 Jest grün** (64 vorher + 15 neu), `forge lint` ohne
+Befund. Backend `RequirementCoverageTest` 17/17 + `TestCaseDefinitionUpdateTest`
+2/2 isoliert grün; Frontend `npm run build` + 7/7 grün (nicht betroffen). Voller
+Backend-Lauf 162/163 — der eine Fehlschlag ist erneut die dokumentierte
+`System.nanoTime() % 100000`-Test-Key-Kollision (diesmal im Setup von
+`BulkResultUpdateTest`, isoliert 16/16 grün; in diesem Task kein Execution-Modul-
+Code angefasst). Task 1 unverändert grün. `forge deploy`/`install` und die visuelle
+Jira-Abnahme stehen weiter aus (eigener Task).
+
+**Vorhandenen Testfall aus dem Jira-Panel verknüpfen: implementiert (Forge-only,
+Task 1).** Neben „Create test case" bietet das Panel jetzt „Link existing test
+case": Projekt wählen, Testfälle des Projekts nach Human-ID/Titel durchsuchen
+(bestehender paginierter `GET /api/v1/projects/{key}/test-cases`-Such-Endpoint,
+eine Seite je Forge-Request, Abschnitt 22), einen Treffer per Klick mit dem
+aktuellen Issue verknüpfen. Kein neuer Backend-Endpoint: der Schreibpfad ist der
+bestehende provider-neutrale `POST /api/v1/test-cases/{id}/requirements`
+(Duplikatschutz `409`, Best-Effort-Enrichment). Vertrauensmodell wie beim
+Erstellen (ADR 0016): der Browser liefert nur die Testfall-ID, `externalKey` kommt
+aus dem Forge Invocation Context, die `url` aus Testryns persistierter
+Jira-Connection (`GET /api/v1/integrations/jira/connection`) — der Service-Token
+bleibt im Resolver, sein vorhandener `testryn:write`-Scope reicht, keine
+Jira-REST-Scopes. Bereits verknüpfte Treffer zeigt das Panel als „Linked" und
+bietet sie nicht erneut an; die Durchsetzung bleibt der `409`. Neuer Resolver
+`searchTestCases`/`linkExistingTestCase`, neue Komponente `TestCaseLinker.jsx`,
+reine Datenhilfe `markLinkable` in `coverageView.js`. ADR 0016 um einen
+Erweiterungsabschnitt ergänzt, `docs/jira-forge-integration.md` aktualisiert.
+Verifikation: **Forge 64/64 Jest grün** (46 vorher + 18 neu), `forge lint` ohne
+Befund. Frontend `npm run build` + 7/7 grün und `tools`-Suite nicht betroffen
+(keine Änderung dort). Voller Backend-Lauf 162/163 — der eine Fehlschlag ist die
+seit Langem dokumentierte `System.nanoTime() % 100000`-Test-Key-Kollision in
+`BulkResultUpdateTest` (isoliert 16/16 grün, kein Backend-Code in diesem Task
+angefasst). `forge deploy`/`install` und die visuelle Browser-Abnahme stehen noch
+aus (Task 3).
+
 **Reproduzierbarer lokaler Rechnerumzug: umgesetzt.** `scripts/backup-local.ps1`
 exportiert die PostgreSQL-Datenbank und das Report-Volume zusammen mit
 SHA-256-Prüfsummen in einen von Git ausgeschlossenen Backup-Ordner.

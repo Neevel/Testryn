@@ -105,6 +105,73 @@ export async function getProjects() {
     Array.isArray(body) ? { kind: "ok", projects: body } : { kind: "unavailable" });
 }
 
+/**
+ * Read-only lookup backing the "link an existing test case" picker: the paginated
+ * project search endpoint (ADR 0008) is reused as-is, capped at one page so a
+ * single Forge request stays a single Testryn request (Abschnitt 22). `totalCount`
+ * is the real total, so the panel can honestly say "showing N of M".
+ */
+export async function searchTestCases(projectKey, query) {
+  if (typeof projectKey !== "string" || !projectKey.trim()) return { kind: "invalid" };
+  const params = new URLSearchParams({ size: "20" });
+  if (typeof query === "string" && query.trim()) params.set("query", query.trim());
+  return sendJson(
+    `/api/v1/projects/${encodeURIComponent(projectKey.trim())}/test-cases?${params.toString()}`,
+    { method: "GET" },
+    (body) => Array.isArray(body?.content)
+      ? {
+          kind: "ok",
+          testCases: body.content,
+          totalCount: typeof body.totalElements === "number" ? body.totalElements : body.content.length,
+        }
+      : { kind: "unavailable" });
+}
+
+/**
+ * Links an already existing Testryn test case to the current Jira issue (ADR 0016
+ * extension). The browser only ever supplies the test case id; the issue key comes
+ * from the trusted Forge invocation context and the human-facing Jira URL is built
+ * from Testryn's own persisted integration settings, never from a value the browser
+ * could tamper with (same rule as createLinkedTestCase). Reuses the existing
+ * provider-neutral `POST /test-cases/{id}/requirements` endpoint -- no new API. A
+ * duplicate link comes back from Testryn as 409 and is surfaced as "conflict", not
+ * an error.
+ */
+export async function linkExistingTestCase(issueKey, testCaseId) {
+  if (typeof testCaseId !== "string" || !testCaseId.trim()) return { kind: "invalid" };
+
+  const connection = await sendJson("/api/v1/integrations/jira/connection", { method: "GET" },
+    (body) => typeof body?.baseUrl === "string"
+      ? { kind: "ok", baseUrl: trimTrailingSlash(body.baseUrl) }
+      : { kind: "unavailable" });
+  if (connection.kind !== "ok" || !connection.baseUrl) return connection;
+
+  const baseUrl = trimTrailingSlash(process.env.TESTRYN_API_BASE_URL);
+  const token = process.env.TESTRYN_API_TOKEN;
+  try {
+    const response = await fetch(
+      `${baseUrl}/api/v1/test-cases/${encodeURIComponent(testCaseId.trim())}/requirements`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          provider: "JIRA",
+          externalKey: issueKey,
+          url: `${connection.baseUrl}/browse/${encodeURIComponent(issueKey)}`,
+        }),
+      });
+    if (response.status === 401 || response.status === 403) return { kind: "unauthorized" };
+    if (response.status === 409) return { kind: "conflict" };
+    if (response.status === 400 || response.status === 404) return { kind: "invalid" };
+    if (!response.ok) return { kind: "unavailable" };
+    return { kind: "ok" };
+  } catch (networkError) {
+    return { kind: "unavailable" };
+  }
+}
+
 export async function createProject(project) {
   if (!project || typeof project.key !== "string" || typeof project.name !== "string") return { kind: "invalid" };
   return sendJson("/api/v1/projects", { method: "POST", body: project }, (body) => ({ kind: "ok", project: body }));
@@ -127,6 +194,76 @@ export async function createLinkedTestCase(issueKey, input) {
   };
   return sendJson("/api/v1/requirement-links/test-cases", { method: "POST", body },
     (created) => ({ kind: "ok", testCase: created }));
+}
+
+/**
+ * Starts a new Testryn execution for a subset of the test cases linked to the
+ * current Jira issue (ADR 0016 extension / Task 2). Jira stays read-only.
+ *
+ * Reuses the existing provider-neutral ad-hoc execution endpoint
+ * `POST /api/v1/projects/{projectKey}/executions` unchanged -- that endpoint
+ * already builds an immutable snapshot pinned to each test case's current version
+ * (ADR 0003), so no Forge-specific path bypasses the snapshot/versioning rules and
+ * no new backend API is needed.
+ *
+ * Trust model matches updateTestCaseDefinition: the browser only supplies test
+ * case ids; every id is re-checked against this issue's own coverage set (read
+ * server-side from the trusted invocation context) before anything is created, and
+ * the project is derived from that verified coverage, never from a browser value.
+ * A selection spanning more than one project is rejected -- the ad-hoc endpoint is
+ * single-project by design.
+ */
+export async function startExecution(issueKey, input) {
+  const requestedIds = Array.isArray(input?.testCaseIds) ? input.testCaseIds : [];
+  if (requestedIds.length === 0 || !requestedIds.every((id) => typeof id === "string")) {
+    return { kind: "invalid" };
+  }
+
+  const coverage = await getCoverage(issueKey);
+  if (coverage.kind !== "ok") return coverage;
+
+  const linkedById = new Map(coverage.testCases.map((testCase) => [testCase.id, testCase]));
+  const selected = [];
+  for (const id of requestedIds) {
+    const match = linkedById.get(id);
+    if (!match) return { kind: "invalid" };
+    selected.push(match);
+  }
+
+  const projectKeys = [...new Set(selected.map((testCase) => testCase.projectKey))];
+  if (projectKeys.length !== 1 || !projectKeys[0]) {
+    return { kind: "invalid", reason: "multiProject" };
+  }
+  const projectKey = projectKeys[0];
+
+  const baseUrl = trimTrailingSlash(process.env.TESTRYN_API_BASE_URL);
+  if (!baseUrl) return { kind: "unavailable" };
+  const token = process.env.TESTRYN_API_TOKEN;
+  const name = typeof input?.name === "string" && input.name.trim() ? input.name.trim() : null;
+
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/projects/${encodeURIComponent(projectKey)}/executions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ name, testCaseIds: requestedIds }),
+    });
+    if (response.status === 401 || response.status === 403) return { kind: "unauthorized" };
+    if (response.status === 400 || response.status === 404) return { kind: "invalid" };
+    if (!response.ok) return { kind: "unavailable" };
+    let body;
+    try {
+      body = await response.json();
+    } catch (parseError) {
+      return { kind: "unavailable" };
+    }
+    if (!body || typeof body.id !== "string") return { kind: "unavailable" };
+    return { kind: "ok", executionId: body.id, executionName: body.name ?? null };
+  } catch (networkError) {
+    return { kind: "unavailable" };
+  }
 }
 
 async function sendJson(path, request, onSuccess) {

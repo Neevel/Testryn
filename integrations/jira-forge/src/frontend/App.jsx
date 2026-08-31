@@ -3,6 +3,8 @@ import { Box, Button, EmptyState, Inline, SectionMessage, Spinner, Stack, Text }
 import { invoke, router } from "@forge/bridge";
 import { TestCaseCard } from "./TestCaseCard";
 import { TestCaseCreator } from "./TestCaseCreator";
+import { TestCaseLinker } from "./TestCaseLinker";
+import { ExecutionStarter } from "./ExecutionStarter";
 import { orderByAttention, summarizeCoverage } from "./coverageView";
 
 /**
@@ -17,6 +19,9 @@ export function App() {
   const [filter, setFilter] = useState("ALL");
   const [reloadKey, setReloadKey] = useState(0);
   const [creating, setCreating] = useState(false);
+  const [linking, setLinking] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const reload = () => setReloadKey((value) => value + 1);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,11 +74,22 @@ export function App() {
   if (testCases.length === 0) {
     return (
       <Box padding="space.100">
-        {creating ? <TestCaseCreator onCancel={() => setCreating(false)} onCreated={() => { setCreating(false); setReloadKey((value) => value + 1); }} /> : <EmptyState
-          header="No Testryn test cases linked"
-          description="Create a test case here and link it to this Jira story automatically."
-          primaryAction={<Button appearance="primary" onClick={() => setCreating(true)}>Create test case</Button>}
-        />}
+        {creating ? (
+          <TestCaseCreator onCancel={() => setCreating(false)} onCreated={() => { setCreating(false); reload(); }} />
+        ) : linking ? (
+          <TestCaseLinker linkedIds={[]} onCancel={() => setLinking(false)} onLinked={() => { setLinking(false); reload(); }} />
+        ) : (
+          <Stack space="space.150">
+            <EmptyState
+              header="No Testryn test cases linked"
+              description="Create a test case here and link it to this Jira story automatically, or link one that already exists."
+              primaryAction={<Button appearance="primary" onClick={() => setCreating(true)}>Create test case</Button>}
+            />
+            <Inline alignInline="center">
+              <Button appearance="subtle" onClick={() => setLinking(true)}>Link existing test case</Button>
+            </Inline>
+          </Stack>
+        )}
       </Box>
     );
   }
@@ -85,8 +101,18 @@ export function App() {
     <Box padding="space.100">
       <Stack space="space.150">
         <CoverageSummary testCases={testCases} totalCount={totalCount} />
-        {creating ? <TestCaseCreator onCancel={() => setCreating(false)} onCreated={() => { setCreating(false); setReloadKey((value) => value + 1); }} /> : (
-          <Button appearance="primary" onClick={() => setCreating(true)}>Create test case</Button>
+        {creating ? (
+          <TestCaseCreator onCancel={() => setCreating(false)} onCreated={() => { setCreating(false); reload(); }} />
+        ) : linking ? (
+          <TestCaseLinker linkedIds={testCases.map((testCase) => testCase.id)} onCancel={() => setLinking(false)} onLinked={() => { setLinking(false); reload(); }} />
+        ) : starting ? (
+          <ExecutionStarter testCases={testCases} appBaseUrl={appBaseUrl} onCancel={() => setStarting(false)} onStarted={() => { setStarting(false); reload(); }} />
+        ) : (
+          <Inline space="space.100" shouldWrap>
+            <Button appearance="primary" onClick={() => setStarting(true)}>Start execution</Button>
+            <Button appearance="subtle" onClick={() => setCreating(true)}>Create test case</Button>
+            <Button appearance="subtle" onClick={() => setLinking(true)}>Link existing test case</Button>
+          </Inline>
         )}
         <Inline space="space.075" shouldWrap alignBlock="center">
           {["ALL", "FAILED", "BLOCKED", "NOT_RUN", "PASSED"].map((value) => (

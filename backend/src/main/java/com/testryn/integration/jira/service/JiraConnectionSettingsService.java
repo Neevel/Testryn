@@ -1,5 +1,6 @@
 package com.testryn.integration.jira.service;
 
+import com.testryn.integration.jira.JiraAuthType;
 import com.testryn.integration.jira.JiraProperties;
 import com.testryn.integration.jira.domain.JiraConnectionConfiguration;
 import com.testryn.integration.jira.repository.JiraConnectionConfigurationRepository;
@@ -26,12 +27,15 @@ public class JiraConnectionSettingsService {
         return repository.findById(JiraConnectionConfiguration.DEFAULT_ID)
                 .map(configuration -> new JiraConnectionSettings(
                         configuration.getName(), configuration.getBaseUrl(), configuration.getEmail(),
-                        defaults.getApiToken(), defaults.getAuthType(), configuration.isActive()))
+                        defaults.getApiToken(), configuration.getAuthType(), configuration.isActive()))
                 .orElseGet(() -> fromDefaults(defaults));
     }
 
+    /** {@code authType} is optional -- {@code null} keeps the currently persisted
+     * (or default) value, so a plain metadata edit never has to restate it. */
     @Transactional
-    public JiraConnectionSettings update(String name, String baseUrl, String email, boolean active) {
+    public JiraConnectionSettings update(String name, String baseUrl, String email, boolean active,
+                                         JiraAuthType authType) {
         String normalizedName = requireText(name, "Connection name");
         String normalizedBaseUrl = normalizeCloudUrl(baseUrl);
         String normalizedEmail = StringUtils.hasText(email) ? email.trim() : null;
@@ -39,11 +43,12 @@ public class JiraConnectionSettingsService {
         JiraConnectionConfiguration configuration = repository
                 .findById(JiraConnectionConfiguration.DEFAULT_ID)
                 .orElseGet(() -> JiraConnectionConfiguration.create(
-                        normalizedName, normalizedBaseUrl, normalizedEmail, active));
-        configuration.update(normalizedName, normalizedBaseUrl, normalizedEmail, active);
+                        normalizedName, normalizedBaseUrl, normalizedEmail, active, JiraAuthType.API_TOKEN));
+        JiraAuthType effectiveAuthType = authType != null ? authType : configuration.getAuthType();
+        configuration.update(normalizedName, normalizedBaseUrl, normalizedEmail, active, effectiveAuthType);
         repository.save(configuration);
         return new JiraConnectionSettings(normalizedName, normalizedBaseUrl, normalizedEmail,
-                defaults.getApiToken(), defaults.getAuthType(), active);
+                defaults.getApiToken(), effectiveAuthType, active);
     }
 
     public static JiraConnectionSettings fromDefaults(JiraProperties properties) {

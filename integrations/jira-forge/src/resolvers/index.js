@@ -1,5 +1,14 @@
 import Resolver from "@forge/resolver";
-import { createLinkedTestCase, createProject, getCoverage, getProjects, updateTestCaseDefinition } from "./testrynClient";
+import {
+  createLinkedTestCase,
+  createProject,
+  getCoverage,
+  getProjects,
+  linkExistingTestCase,
+  searchTestCases,
+  startExecution,
+  updateTestCaseDefinition,
+} from "./testrynClient";
 
 const resolver = new Resolver();
 
@@ -33,6 +42,25 @@ resolver.define("createLinkedTestCase", async (req) => {
   const issueKey = req?.context?.extension?.issue?.key;
   if (!issueKey) return { kind: "invalid" };
   return createLinkedTestCase(issueKey, req?.payload?.testCase);
+});
+
+resolver.define("searchTestCases", async (req) => {
+  const { projectKey, query } = req?.payload ?? {};
+  return searchTestCases(projectKey, query);
+});
+
+resolver.define("linkExistingTestCase", async (req) => {
+  const issueKey = req?.context?.extension?.issue?.key;
+  const { testCaseId } = req?.payload ?? {};
+  if (!issueKey || typeof testCaseId !== "string") return { kind: "invalid" };
+  return linkExistingTestCase(issueKey, testCaseId);
+});
+
+resolver.define("startExecution", async (req) => {
+  const issueKey = req?.context?.extension?.issue?.key;
+  const { testCaseIds, name } = req?.payload ?? {};
+  if (!issueKey || !Array.isArray(testCaseIds) || testCaseIds.length === 0) return { kind: "invalid" };
+  return startExecution(issueKey, { testCaseIds, name });
 });
 
 export const handler = resolver.getDefinitions();

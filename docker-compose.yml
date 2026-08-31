@@ -28,6 +28,13 @@ services:
       TESTRYN_JIRA_BASE_URL: ${TESTRYN_JIRA_BASE_URL:-}
       TESTRYN_JIRA_EMAIL: ${TESTRYN_JIRA_EMAIL:-}
       TESTRYN_JIRA_API_TOKEN: ${TESTRYN_JIRA_API_TOKEN:-}
+      # Jira OAuth 2.0 (3LO), ADR 0018 -- only needed when the connection's authType
+      # is OAUTH2. Names only here; real values come from a gitignored .env / your
+      # secret store. TESTRYN_JIRA_OAUTH_ENCRYPTION_KEY is Base64 of 32 random bytes.
+      TESTRYN_JIRA_OAUTH_CLIENT_ID: ${TESTRYN_JIRA_OAUTH_CLIENT_ID:-}
+      TESTRYN_JIRA_OAUTH_CLIENT_SECRET: ${TESTRYN_JIRA_OAUTH_CLIENT_SECRET:-}
+      TESTRYN_JIRA_OAUTH_REDIRECT_URI: ${TESTRYN_JIRA_OAUTH_REDIRECT_URI:-}
+      TESTRYN_JIRA_OAUTH_ENCRYPTION_KEY: ${TESTRYN_JIRA_OAUTH_ENCRYPTION_KEY:-}
       # Becomes the first admin service token, but only on the very first start with
       # no service tokens yet -- never a standing credential in this file itself, see
       # docs/security.md. Leave unset and create tokens another way if you prefer.

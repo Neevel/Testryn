@@ -94,6 +94,15 @@ export interface JiraConnection {
   siteConfigured: boolean;
   tokenConfigured: boolean;
   usable: boolean;
+  /** OAuth 2.0 status (ADR 0018) -- non-secret booleans + the site URL only. */
+  oauthConfigured: boolean;
+  oauthConnected: boolean;
+  oauthSiteUrl: string | null;
+  reauthorizationRequired: boolean;
+}
+
+export interface JiraAuthorizationUrl {
+  authorizationUrl: string;
 }
 
 export interface JiraConnectionTestResult {

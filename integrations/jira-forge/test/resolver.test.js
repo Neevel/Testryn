@@ -1,4 +1,13 @@
-import { createLinkedTestCase, createProject, getCoverage, getProjects, updateTestCaseDefinition } from "../src/resolvers/testrynClient";
+import {
+  createLinkedTestCase,
+  createProject,
+  getCoverage,
+  getProjects,
+  linkExistingTestCase,
+  searchTestCases,
+  startExecution,
+  updateTestCaseDefinition,
+} from "../src/resolvers/testrynClient";
 
 jest.mock("../src/resolvers/testrynClient", () => ({
   getCoverage: jest.fn(),
@@ -6,6 +15,9 @@ jest.mock("../src/resolvers/testrynClient", () => ({
   getProjects: jest.fn(),
   createProject: jest.fn(),
   createLinkedTestCase: jest.fn(),
+  searchTestCases: jest.fn(),
+  linkExistingTestCase: jest.fn(),
+  startExecution: jest.fn(),
 }));
 
 // The real @forge/resolver package works fine standalone (no Forge runtime needed
@@ -70,6 +82,72 @@ describe("resolvers/index handler", () => {
     });
     expect(createLinkedTestCase).toHaveBeenCalledWith("EVAL-48", testCase);
     expect(response).toEqual({ kind: "ok" });
+  });
+
+  test("test case search passes the project/query payload straight through", async () => {
+    searchTestCases.mockResolvedValue({ kind: "ok", testCases: [], totalCount: 0 });
+    const response = await handler({
+      call: { functionKey: "searchTestCases", payload: { projectKey: "EVAL", query: "login" } },
+      context: { extension: { issue: { key: "EVAL-47" } } },
+    });
+    expect(searchTestCases).toHaveBeenCalledWith("EVAL", "login");
+    expect(response).toEqual({ kind: "ok", testCases: [], totalCount: 0 });
+  });
+
+  test("linking an existing test case injects the trusted issue key", async () => {
+    linkExistingTestCase.mockResolvedValue({ kind: "ok" });
+    const response = await handler({
+      call: { functionKey: "linkExistingTestCase", payload: { testCaseId: "tc-1" } },
+      context: { extension: { issue: { key: "EVAL-47" } } },
+    });
+    expect(linkExistingTestCase).toHaveBeenCalledWith("EVAL-47", "tc-1");
+    expect(response).toEqual({ kind: "ok" });
+  });
+
+  test("linking is rejected as invalid when the issue context is missing, without calling Testryn", async () => {
+    const response = await handler({
+      call: { functionKey: "linkExistingTestCase", payload: { testCaseId: "tc-1" } },
+      context: {},
+    });
+    expect(linkExistingTestCase).not.toHaveBeenCalled();
+    expect(response).toEqual({ kind: "invalid" });
+  });
+
+  test("linking is rejected as invalid when the browser sends no test case id", async () => {
+    const response = await handler({
+      call: { functionKey: "linkExistingTestCase", payload: {} },
+      context: { extension: { issue: { key: "EVAL-47" } } },
+    });
+    expect(linkExistingTestCase).not.toHaveBeenCalled();
+    expect(response).toEqual({ kind: "invalid" });
+  });
+
+  test("starting an execution injects the trusted issue key and forwards the selection", async () => {
+    startExecution.mockResolvedValue({ kind: "ok", executionId: "exec-1", executionName: "Iteration 1" });
+    const response = await handler({
+      call: { functionKey: "startExecution", payload: { testCaseIds: ["tc-1", "tc-2"], name: "Smoke" } },
+      context: { extension: { issue: { key: "EVAL-47" } } },
+    });
+    expect(startExecution).toHaveBeenCalledWith("EVAL-47", { testCaseIds: ["tc-1", "tc-2"], name: "Smoke" });
+    expect(response).toEqual({ kind: "ok", executionId: "exec-1", executionName: "Iteration 1" });
+  });
+
+  test("starting an execution is rejected as invalid with no issue context, without calling Testryn", async () => {
+    const response = await handler({
+      call: { functionKey: "startExecution", payload: { testCaseIds: ["tc-1"] } },
+      context: {},
+    });
+    expect(startExecution).not.toHaveBeenCalled();
+    expect(response).toEqual({ kind: "invalid" });
+  });
+
+  test("starting an execution is rejected as invalid when the browser sends no test case ids", async () => {
+    const response = await handler({
+      call: { functionKey: "startExecution", payload: { testCaseIds: [] } },
+      context: { extension: { issue: { key: "EVAL-47" } } },
+    });
+    expect(startExecution).not.toHaveBeenCalled();
+    expect(response).toEqual({ kind: "invalid" });
   });
 
   test("project operations delegate without accepting an issue key from the browser", async () => {

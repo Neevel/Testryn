@@ -1,6 +1,7 @@
 package com.testryn.integration.jira.web;
 
 import com.testryn.integration.jira.JiraIssueClient;
+import com.testryn.integration.jira.oauth.JiraOAuthService;
 import com.testryn.integration.jira.service.JiraConnectionSettingsService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -22,23 +23,27 @@ public class JiraIntegrationController {
 
     private final JiraConnectionSettingsService settingsService;
     private final JiraIssueClient client;
+    private final JiraOAuthService oauthService;
 
-    public JiraIntegrationController(JiraConnectionSettingsService settingsService, JiraIssueClient client) {
+    public JiraIntegrationController(JiraConnectionSettingsService settingsService, JiraIssueClient client,
+                                    JiraOAuthService oauthService) {
         this.settingsService = settingsService;
         this.client = client;
+        this.oauthService = oauthService;
     }
 
-    @Operation(summary = "Current Jira connection configuration (never includes the API token)")
+    @Operation(summary = "Current Jira connection configuration (never includes any secret)")
     @GetMapping("/connection")
     public JiraConnectionResponse connection() {
-        return JiraConnectionResponse.from(settingsService.current());
+        return JiraConnectionResponse.from(settingsService.current(), oauthService.status());
     }
 
-    @Operation(summary = "Update non-secret Jira Cloud connection settings")
+    @Operation(summary = "Update non-secret Jira Cloud connection settings (name, site URL, email, active, auth type)")
     @PutMapping("/connection")
     public JiraConnectionResponse updateConnection(@Valid @RequestBody UpdateJiraConnectionRequest request) {
-        return JiraConnectionResponse.from(settingsService.update(
-                request.name(), request.baseUrl(), request.email(), request.active()));
+        var updated = settingsService.update(
+                request.name(), request.baseUrl(), request.email(), request.active(), request.authType());
+        return JiraConnectionResponse.from(updated, oauthService.status());
     }
 
     @Operation(summary = "Test the configured Jira connection by calling Jira as the configured identity")
