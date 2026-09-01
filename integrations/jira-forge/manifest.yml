@@ -42,7 +42,19 @@ permissions:
   external:
     fetch:
       backend:
-        - address: https://lyrics-commentary-cleaning-perry.trycloudflare.com
+        # Egress allow-list: Forge rejects any resolver fetch to a host not listed
+        # here, and (unlike the environment variables below) it accepts no variable
+        # interpolation -- the value is always literal in this file.
+        #
+        # The committed value is a deliberate placeholder (like `app.id` above): it
+        # is not a reachable host. Before `forge deploy` you must replace it LOCALLY
+        # with the host the resolver will actually call -- a cloudflared/ngrok
+        # tunnel to your local stack for verification, or a hosted Testryn instance
+        # -- and set the matching `TESTRYN_API_BASE_URL` variable. Do NOT commit
+        # that edit: an ephemeral *.trycloudflare.com address is machine-/session-
+        # bound dev state, never repository state (AGENTS.md -> Sicherheit).
+        # See docs/jira-forge-integration.md -> "Testryn Base URL".
+        - address: https://testryn.example.com
 # TESTRYN_API_BASE_URL / TESTRYN_APP_BASE_URL are plain (non-secret) config -- just
 # URLs, safe to default and to see in `forge variables list`. TESTRYN_API_TOKEN is
 # NOT declared here: encrypted variables are set directly via

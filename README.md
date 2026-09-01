@@ -92,7 +92,11 @@ cloudflared tunnel --url http://localhost:8080
 Die ausgegebene `https://<zufällig>.trycloudflare.com`-Adresse muss sowohl als
 `TESTRYN_API_BASE_URL` gesetzt als auch in
 `integrations/jira-forge/manifest.yml` unter
-`permissions.external.fetch.backend` eingetragen werden. Danach:
+`permissions.external.fetch.backend` eingetragen werden (Forge erlaubt für diese
+Liste keine Variablen). Der committete Wert dort ist nur ein Platzhalter
+(`https://testryn.example.com`) — die konkrete Tunnel-Adresse ist rechner- bzw.
+sitzungsgebunden und wird **nicht committet** (`git checkout -- manifest.yml` vor
+dem nächsten Commit, oder die Zeile lokal zurücksetzen). Danach:
 
 ```powershell
 cd integrations/jira-forge

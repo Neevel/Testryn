@@ -200,10 +200,29 @@ forge variables set -e development TESTRYN_API_BASE_URL "https://<your-tunnel-or
 forge variables set -e development TESTRYN_APP_BASE_URL "https://<your-tunnel-or-host-frontend>"
 ```
 
-`manifest.yml`'s `permissions.external.fetch.backend` entry must also list this same
-host -- Forge rejects any outbound `fetch` to a domain not explicitly allow-listed
-there (Abschnitt 7's egress control, enforced by the platform itself, not just this
-app's own code). Update that entry, then re-run `forge deploy`.
+### Egress allow-list (`permissions.external.fetch.backend`)
+
+Forge rejects any resolver `fetch` to a host not listed in
+`permissions.external.fetch.backend` (Abschnitt 7's egress control, enforced by
+the platform itself). Forge accepts **no variable interpolation** for this list --
+the value is always literal in `manifest.yml`.
+
+The committed value is a **placeholder** (`https://testryn.example.com`), like the
+placeholder `app.id`. Before deploying you must replace it **locally** with the
+host the resolver will actually call -- your `cloudflared`/`ngrok` tunnel for local
+verification, or a hosted Testryn instance -- matching what you set for
+`TESTRYN_API_BASE_URL`:
+
+```bash
+# in integrations/jira-forge/manifest.yml, permissions.external.fetch.backend:
+#   - address: https://<your-tunnel-or-host>
+forge deploy -e development   # confirm the MAJOR_VERSION_RULE prompt: the egress list changed
+```
+
+**Do not commit that edit.** An ephemeral `*.trycloudflare.com` address is
+machine-/session-bound development state, never repository state (AGENTS.md ->
+Sicherheit). Reset the line before committing anything else
+(`git checkout -- manifest.yml`).
 
 ## Service Token
 
