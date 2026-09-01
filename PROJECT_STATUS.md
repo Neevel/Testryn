@@ -3,7 +3,7 @@
 > Momentaufnahme des aktuellen technischen Stands. Keine Historie — siehe Git-Log für
 > Verlauf. Wird bei jedem abgeschlossenen, relevanten Task aktualisiert.
 
-Stand: 2026-08-31
+Stand: 2026-09-01
 
 ## Aktueller Meilenstein
 
@@ -94,11 +94,42 @@ bleibt ein separater Task). Frontend `npm run build` + 7/7 grün. **Forge 79/79
 Jest grün** und `forge lint` ohne Befund (Forge fachlich unverändert).
 `git diff --check` sauber, Secret-Scan ohne echten Fund.
 
-**Manuell mit echtem Atlassian-OAuth-Client noch nötig** (kein Live-Deployment in
-diesem Block): OAuth-2.0-(3LO)-App in der Developer Console anlegen (Scopes +
-Callback-URL), die vier `TESTRYN_JIRA_OAUTH_*`-Variablen setzen, in den Settings auf
-OAUTH2 schalten und „Connect" durchführen, dann End-to-End gegen die echte Site
-verifizieren (Verbindungstest, Issue-Lookup, Enrichment, Ablauf/Refresh, Disconnect).
+**Real End-to-End verifiziert am 2026-09-01** gegen einen echten
+Atlassian-OAuth-2.0-(3LO)-Client und die Jira-Cloud-Site
+`ki-meets-testautomation.atlassian.net`. Backend- und Frontend-Image dafür auf den
+aktuellen `master` gebaut (Migration `0010` eingespielt, keine Volumes/Fachdaten
+angefasst; Fachdaten vor/nach identisch: 10 Projects, 17 Test Cases, 11 Executions,
+3 Requirement Links). Die OAuth-Client-Credentials und der Verschlüsselungsschlüssel
+lagen ausschließlich in einer lokalen, gitignorierten `.env` (nie im Repo, nie in
+Logs, nie in dieser Datei). Verifiziert:
+
+- echter Atlassian-Consent → Authorization-Code-Tausch am Token-Endpoint
+- verschlüsselte Ablage von Access- und Refresh-Token in `jira_oauth_token`
+  (AES-256-GCM, kein Klartext); echter Refresh-Token durch `offline_access` erhalten
+- `accessible-resources` aufgerufen, Site-Match gegen die konfigurierte Jira-Cloud-URL,
+  Cloud-ID korrekt aufgelöst
+- OAUTH2-Verbindungstest erfolgreich; Jira-Issue-Lookup (EVAL-47) über das
+  `api.atlassian.com/ex/jira/{cloudId}`-Gateway erfolgreich; Requirement-/Coverage-
+  Lesepfad erfolgreich
+- der OAUTH2-Pfad nutzt nachweislich **keinen** API-Token-Fallback (im Disconnect-
+  Fenster liefert derselbe Issue-Lookup `502 „Jira OAuth authorization is required"`
+  statt eines Erfolgs)
+- `state` ist single-use: nach dem Callback verbraucht/gelöscht, ein zweiter Callback
+  mit demselben oder unbekanntem `state` wird abgewiesen
+- Disconnect entfernt nur die lokalen OAuth-Credentials (Fachdaten unberührt); der
+  Best-Effort-Revoke gegen `auth.atlassian.com/oauth/revoke` wurde in diesem realen
+  Lauf von Atlassian akzeptiert (kein Fehler-Log)
+- Re-Authorization mit frischem `state`, neuem Code und neuem Token-Satz erfolgreich;
+  danach `oauthConnected = true`. Die Verbindung bleibt für die weitere Entwicklung
+  verbunden.
+
+**Refresh-Hinweis**: Ein natürlicher Access-Token-Refresh wurde während der
+manuellen E2E-Verifikation nicht abgewartet oder künstlich ausgelöst. Ein echter
+Refresh-Token wurde erfolgreich erhalten. Refresh, Refresh-Token-Rotation,
+Nebenläufigkeit sowie permanente und transiente Fehlerfälle sind durch die
+automatisierten OAuth-Tests abgedeckt (`JiraOAuthServiceIntegrationTest` u. a.,
+49/49 grün in dieser Session erneut ausgeführt). Das ist kein offener Blocker für
+den abgeschlossenen OAuth-E2E-Task.
 
 **Task 3 (Forge-Deployment + visuelle Live-Abnahme): Deployment erledigt, visuelle
 Abnahme weiterhin offen.**

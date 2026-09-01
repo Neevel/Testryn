@@ -28,10 +28,14 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 - [x] Migration `0010-jira-oauth.sql` (additiv); API_TOKEN-Regression unverändert
 - [x] Backend 212/212, Frontend Build + 7/7, Forge 79/79 + lint, `git diff --check`
       sauber, Secret-Scan ohne Fund
-- [ ] **Manuell mit echtem OAuth-Client**: Developer-Console-App (Scopes +
-      Callback-URL), `TESTRYN_JIRA_OAUTH_*` setzen, in Settings auf OAUTH2 schalten,
-      „Connect" durchführen, End-to-End gegen die echte Jira-Site verifizieren
-      (Verbindungstest, Issue-Lookup, Enrichment, Ablauf/Refresh, Disconnect)
+- [x] **Real E2E gegen einen echten Atlassian-OAuth-Client verifiziert (2026-09-01)**:
+      Consent → Code-Tausch → verschlüsselte Token-Ablage → echter Refresh-Token
+      (`offline_access`) → `accessible-resources` → Site-Match → Cloud-ID; OAUTH2-
+      Verbindungstest, Issue-Lookup (EVAL-47) über das Gateway, Coverage-Lesepfad;
+      `state` single-use; Disconnect (Atlassian-Best-Effort-Revoke akzeptiert) +
+      Re-Authorization; kein API-Token-Fallback im OAUTH2-Pfad; Fachdaten unverändert.
+      Natürlicher Access-Token-Refresh nicht abgewartet/erzwungen — durch die
+      automatisierten Tests abgedeckt, kein offener Blocker. Details in PROJECT_STATUS.md.
 
 ## Now (Forge-Deployment + visuelle Live-Abnahme — Task 3, siehe PROJECT_STATUS.md)
 
@@ -212,9 +216,9 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 - **Secret Rotation** für Service Tokens (z. B. "neuen Token erzeugen, alten erst
   nach Umstellung widerrufen" als geführter Workflow statt zweier manueller
   Schritte) — aktuell manuell über Create + Revoke möglich, kein eigener Workflow.
-- ~~**Jira OAuth 2.0**~~ — **umgesetzt (Task 4, ADR 0018)**. Offen bleibt nur die
-  manuelle End-to-End-Verifikation mit einem echten Atlassian-OAuth-Client (siehe
-  Now-Block oben).
+- ~~**Jira OAuth 2.0**~~ — **umgesetzt (Task 4, ADR 0018) und am 2026-09-01 real
+  End-to-End gegen einen echten Atlassian-OAuth-Client verifiziert** (siehe
+  Now-Block oben und PROJECT_STATUS.md). Kein offener Punkt mehr.
 - **Jira Server/Data Center** — die neue Laufzeitkonfiguration akzeptiert aus
   Sicherheitsgründen zunächst ausschließlich Jira Cloud (`*.atlassian.net`).
 - **RBAC über die drei Service-Token-Scopes hinaus** — bewusst nicht in diesem Block
