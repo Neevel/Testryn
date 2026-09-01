@@ -17,6 +17,8 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.EnumSet;
+import java.util.Locale;
+import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
@@ -83,6 +85,25 @@ public abstract class AbstractIntegrationTest {
         registry.add("testryn.jira.base-url", () -> "");
         registry.add("testryn.jira.email", () -> "");
         registry.add("testryn.jira.api-token", () -> "");
+    }
+
+    /**
+     * A project/test key that is unique across the whole JVM test run and safe
+     * against a concurrently created one. Replaces the former
+     * {@code "<PREFIX>" + System.nanoTime() % 100000} convention: that truncation
+     * kept only ~5 digits of entropy and clashed sporadically when many
+     * {@code @BeforeEach} setups fired in quick succession during a full run,
+     * producing a spurious 409 in the setup.
+     *
+     * <p>The result matches {@code ProjectService.KEY_PATTERN}
+     * ({@code ^[A-Z][A-Z0-9]{1,19}$}): {@code prefix} must start with A–Z and
+     * contain only A–Z/0–9; the appended hex is uppercase and the whole key is
+     * capped at 20 characters.
+     */
+    protected static String uniqueKey(String prefix) {
+        String hex = UUID.randomUUID().toString().replace("-", "").toUpperCase(Locale.ROOT);
+        int room = Math.max(1, 20 - prefix.length());
+        return prefix + hex.substring(0, Math.min(hex.length(), room));
     }
 
     /**

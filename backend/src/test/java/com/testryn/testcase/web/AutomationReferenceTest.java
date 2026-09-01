@@ -32,7 +32,7 @@ class AutomationReferenceTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpProject() throws Exception {
-        projectKey = "AR" + System.nanoTime() % 100000;
+        projectKey = uniqueKey("AR");
         postJson("/api/v1/projects", """
                 {"key":"%s","name":"Automation Reference Project"}
                 """.formatted(projectKey), 201);

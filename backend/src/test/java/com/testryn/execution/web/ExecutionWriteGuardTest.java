@@ -9,7 +9,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -23,8 +22,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class ExecutionWriteGuardTest extends AbstractIntegrationTest {
 
-    private static final AtomicInteger PROJECT_KEY_SEQUENCE = new AtomicInteger();
-
     @Autowired
     private MockMvc mockMvc;
 
@@ -37,7 +34,7 @@ class ExecutionWriteGuardTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpExecution() throws Exception {
-        String projectKey = "WG" + (System.nanoTime() % 100000) + PROJECT_KEY_SEQUENCE.incrementAndGet();
+        String projectKey = uniqueKey("WG");
         postJson("/api/v1/projects", """
                 {"key":"%s","name":"Write Guard Project"}
                 """.formatted(projectKey), 201);

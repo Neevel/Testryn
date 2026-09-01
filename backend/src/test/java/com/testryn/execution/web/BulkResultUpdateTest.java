@@ -34,7 +34,7 @@ class BulkResultUpdateTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpExecutionWithThreeAutomatedTestCases() throws Exception {
-        String projectKey = "BR" + System.nanoTime() % 100000;
+        String projectKey = uniqueKey("BR");
         postJson("/api/v1/projects", """
                 {"key":"%s","name":"Bulk Result Project"}
                 """.formatted(projectKey), 201);
@@ -149,7 +149,7 @@ class BulkResultUpdateTest extends AbstractIntegrationTest {
     void rejectsAResultIdThatBelongsToADifferentExecution() throws Exception {
         // A second, unrelated ad-hoc execution in the same project -- its result IDs
         // are real, just not part of THIS execution.
-        String projectKey = "BR" + System.nanoTime() % 100000;
+        String projectKey = uniqueKey("BR");
         postJson("/api/v1/projects", """
                 {"key":"%s","name":"Other Execution Project"}
                 """.formatted(projectKey), 201);
@@ -242,7 +242,7 @@ class BulkResultUpdateTest extends AbstractIntegrationTest {
         // A real, existing automationReference elsewhere in the same project -- just
         // not added to THIS execution's plan. Must not silently create a test case or
         // resolve globally (Abschnitt 11).
-        String projectKey = "BR" + System.nanoTime() % 100000;
+        String projectKey = uniqueKey("BR");
         postJson("/api/v1/projects", """
                 {"key":"%s","name":"Other Project"}
                 """.formatted(projectKey), 201);

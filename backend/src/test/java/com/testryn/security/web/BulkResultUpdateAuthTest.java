@@ -39,7 +39,7 @@ class BulkResultUpdateAuthTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpExecution() throws Exception {
-        String projectKey = "BA" + System.nanoTime() % 100000;
+        String projectKey = uniqueKey("BA");
         postJson("/api/v1/projects", """
                 {"key":"%s","name":"Bulk Auth Project"}
                 """.formatted(projectKey), 201);

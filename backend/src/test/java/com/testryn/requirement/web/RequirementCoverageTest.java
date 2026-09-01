@@ -68,7 +68,7 @@ class RequirementCoverageTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpProject() throws Exception {
-        projectKey = "RC" + System.nanoTime() % 100000;
+        projectKey = uniqueKey("RC");
         postJson("/api/v1/projects", """
                 {"key":"%s","name":"Requirement Coverage Project"}
                 """.formatted(projectKey), 201);

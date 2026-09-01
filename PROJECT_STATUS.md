@@ -970,14 +970,13 @@ Docker-Compose-Stack.
   (`NewTestCaseForm`), nur im Edit-Formular — bewusst minimal gehalten; ein Test
   Case bekommt seine Automation-Referenz typischerweise erst, wenn die
   Automatisierung selbst existiert, meist nach der manuellen Erstanlage.
-- Vereinzelt beobachtete Testflakiness bei sehr schnell aufeinanderfolgenden
-  `mvn test`-Läufen in derselben Session (`System.nanoTime() % 100000` als
-  Projekt-Key-Generator in einigen älteren Testklassen, seltene Kollision) — im
-  Step-Level-Execution-Results-Block real reproduziert (ein Fehlschlag bei einem
-  von zwei Volläufen, isoliert immer grün), in den dort neu hinzugekommenen
-  Testklassen bereits durch einen zusätzlichen Zähler abgesichert; ein
-  repo-weiter Fix (z. B. `UUID`-basierte Testschlüssel überall) bleibt bewusst
-  außerhalb des jeweiligen Blocks, siehe BACKLOG.md.
+- ~~Vereinzelt beobachtete Testflakiness durch `System.nanoTime() % 100000` als
+  Projekt-Key-Generator~~ **behoben**: alle 14 betroffenen Stellen in 11
+  Backend-Testklassen (samt zweier `AtomicInteger`-Notbehelfe) nutzen jetzt den
+  zentralen Helfer `AbstractIntegrationTest.uniqueKey(String prefix)`
+  (UUID-basiert, `ProjectService.KEY_PATTERN`-konform, auf 20 Zeichen begrenzt).
+  Voller Backend-Lauf 212/212, dreimal in Folge grün. Reiner Testcode, keine
+  Produktions-/Domainänderung.
 - Visuelle Browser-Kontrolle des Jira-Forge-Panels konnte in keiner Session bisher
   durch Claude selbst durchgeführt werden (kein angemeldeter Atlassian-Browser
   verfügbar) — die vom Panel konsumierten Daten sind jedoch vollständig über die

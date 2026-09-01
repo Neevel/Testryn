@@ -31,7 +31,7 @@ class ExecutionSnapshotRegressionTest extends AbstractIntegrationTest {
 
     @Test
     void anExecutionKeepsItsOriginalStepAfterTheTestCaseIsEditedToADifferentStepSet() throws Exception {
-        String projectKey = "SNAP" + System.nanoTime() % 100000;
+        String projectKey = uniqueKey("SNAP");
         postJson("/api/v1/projects", """
                 {"key":"%s","name":"Snapshot Regression Project"}
                 """.formatted(projectKey), 201);

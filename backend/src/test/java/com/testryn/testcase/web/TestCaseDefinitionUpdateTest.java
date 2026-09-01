@@ -21,7 +21,7 @@ class TestCaseDefinitionUpdateTest extends AbstractIntegrationTest {
 
     @Test
     void definitionPatchVersionsContentPreservesMetadataAndRejectsStaleEditors() throws Exception {
-        String key = "EDIT" + System.nanoTime() % 100000;
+        String key = uniqueKey("EDIT");
         post("/api/v1/projects", """
                 {"key":"%s","name":"Editor API Project"}
                 """.formatted(key), 201);
@@ -58,8 +58,8 @@ class TestCaseDefinitionUpdateTest extends AbstractIntegrationTest {
 
     @Test
     void linkedCreationCreatesTestAndRequirementTogether() throws Exception {
-        String key = "LINK" + System.nanoTime();
-        String issueKey = "EVAL-" + Math.abs(System.nanoTime());
+        String key = uniqueKey("LINK");
+        String issueKey = "EVAL-" + uniqueKey("N");
         post("/api/v1/projects", """
                 {"key":"%s","name":"Linked Creation Project"}
                 """.formatted(key), 201);

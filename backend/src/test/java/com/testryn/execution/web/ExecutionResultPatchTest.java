@@ -34,7 +34,7 @@ class ExecutionResultPatchTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpExecutionWithFullyPopulatedResult() throws Exception {
-        String projectKey = "RP" + System.nanoTime() % 100000;
+        String projectKey = uniqueKey("RP");
         postJson("/api/v1/projects", """
                 {"key":"%s","name":"Result Patch Project"}
                 """.formatted(projectKey), 201);

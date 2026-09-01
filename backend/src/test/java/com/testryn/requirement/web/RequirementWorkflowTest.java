@@ -32,7 +32,7 @@ class RequirementWorkflowTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpTestCase() throws Exception {
-        String projectKey = "RW" + System.nanoTime() % 100000;
+        String projectKey = uniqueKey("RW");
         postJson("/api/v1/projects", """
                 {"key":"%s","name":"Requirement Workflow Project"}
                 """.formatted(projectKey), 201);

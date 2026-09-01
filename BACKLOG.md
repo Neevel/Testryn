@@ -201,11 +201,12 @@ sinnvoll, `Later` = bewusst zurückgestellt/Out-of-Scope für das MVP.
 - **Weitere Report-Importer** (Playwright, Cypress, Allure, NUnit, pytest) — dieselbe
   `ResultBatchReader`-Schnittstelle wie beim jetzt implementierten JUnit-XML-Adapter,
   jeweils ein kleinerer, eigenständiger Block.
-- **Test-Key-Kollisionsfix**: `System.nanoTime() % 100000` als Projekt-Key-Generator
-  in vielen Backend-Testklassen kollidiert selten, aber real bei sehr vielen Tests
-  in einem Lauf (im Step-Level-Execution-Results-Block einmalig reproduziert) — ein
-  gemeinsamer, kollisionsfreier Test-Key-Helfer (z. B. `UUID`-basiert) wäre ein
-  kleiner, eigenständiger Aufräum-Block.
+- ~~**Test-Key-Kollisionsfix**~~ — **erledigt**: `System.nanoTime() % 100000` als
+  Projekt-/Test-Key-Generator (14 Stellen in 11 Backend-Testklassen, plus zwei
+  `AtomicInteger`-Notbehelfe) durch den zentralen Helfer
+  `AbstractIntegrationTest.uniqueKey(String prefix)` (UUID-basiert, `KEY_PATTERN`-
+  konform, auf 20 Zeichen begrenzt) ersetzt. Voller Backend-Lauf 212/212, dreimal
+  in Folge grün.
 - **API-Rate-Limiting** — noch nicht nötig, aber jetzt, wo Requests einem Token
   zugeordnet sind, technisch einfacher anzuschließen als vorher.
 - **Secret Rotation** für Service Tokens (z. B. "neuen Token erzeugen, alten erst

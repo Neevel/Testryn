@@ -11,7 +11,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -41,16 +40,9 @@ class StepResultTest extends AbstractIntegrationTest {
     private String step3Id;
     private String step4Id;
 
-    // A plain `System.nanoTime() % 100000` project-key suffix (the convention used
-    // elsewhere in this suite) collided within this class's own 20+ tests running
-    // back to back -- an AtomicInteger counter added on top guarantees uniqueness
-    // within a single JVM run regardless of how fast @BeforeEach fires, without
-    // changing the shared convention used by every other test class.
-    private static final AtomicInteger PROJECT_KEY_SEQUENCE = new AtomicInteger();
-
     @BeforeEach
     void setUpExecutionWithFourSteps() throws Exception {
-        projectKey = "SR" + (System.nanoTime() % 100000) + "" + PROJECT_KEY_SEQUENCE.incrementAndGet();
+        projectKey = uniqueKey("SR");
         postJson("/api/v1/projects", """
                 {"key":"%s","name":"Step Result Project"}
                 """.formatted(projectKey), 201);

@@ -32,7 +32,7 @@ class TestCaseSearchTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpProjectWithSeveralTestCases() throws Exception {
-        projectKey = "TS" + System.nanoTime() % 100000;
+        projectKey = uniqueKey("TS");
         postJson("/api/v1/projects", """
                 {"key":"%s","name":"Search Project"}
                 """.formatted(projectKey), 201);
